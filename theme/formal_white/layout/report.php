@@ -24,15 +24,18 @@ if ($hascustommenu) {
 }
 
 /************************************************************************************************/
-if (!empty($PAGE->theme->settings->logo)) {
-    $logourl = $PAGE->theme->settings->logo;
+if (!empty($PAGE->theme->settings->customlogourl)) {
+    $logourl = $PAGE->theme->settings->customlogourl;
+    if (strtolower(substr($logourl, 0, 4)) != 'http') {
+        $logourl = $CFG->wwwroot.'/'.$logourl;
+    }
 } else {
     $logourl = $OUTPUT->pix_url('logo_small', 'theme');
 }
 
 $hasframe = !isset($PAGE->theme->settings->noframe) || !$PAGE->theme->settings->noframe;
 
-$displaylogo = !isset($PAGE->theme->settings->displaylogo) || $PAGE->theme->settings->displaylogo;
+$displaylogo = !isset($PAGE->theme->settings->headercontent) || $PAGE->theme->settings->headercontent;
 /************************************************************************************************/
 
 echo $OUTPUT->doctype() ?>
@@ -60,13 +63,6 @@ echo $OUTPUT->doctype() ?>
 <!-- begin of page-header -->
                             <?php if ($hasheading) { ?>
                             <div id="page-header">
-                            <?php if ($displaylogo) { ?>
-                                <div id="headerlogo">
-                                    <img src="<?php echo $logourl ?>" alt="Custom logo here" />
-                                </div>
-                            <?php } else { ?>
-                                <h1 class="headerheading"><?php echo $PAGE->heading ?></h1>
-                            <?php } ?>
 
                                 <div class="headermenu">
                                     <?php
@@ -77,6 +73,15 @@ echo $OUTPUT->doctype() ?>
                                     echo $PAGE->headingmenu;
                                     ?>
                                 </div>
+
+                                <?php if ($displaylogo) { ?>
+                                    <div id="headerlogo">
+                                        <img src="<?php echo $logourl ?>" alt="Custom logo here" />
+                                    </div>
+                                <?php } else { ?>
+                                    <h1 class="headerheading"><?php echo $PAGE->heading ?></h1>
+                                <?php } ?>
+
                             </div>
                             <?php } ?>
 <!-- end of page-header -->
@@ -102,7 +107,7 @@ echo $OUTPUT->doctype() ?>
                                 <!-- main mandatory content of the moodle page  -->
                                 <div id="report-main-content">
                                     <div class="region-content">
-                                        <?php echo core_renderer::MAIN_CONTENT_TOKEN ?>
+                                        <?php echo $OUTPUT->main_content() ?>
                                     </div>
                                 </div>
                                 <!-- end of main mandatory content of the moodle page -->

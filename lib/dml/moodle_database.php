@@ -14,24 +14,19 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-
 /**
  * Abstract database driver class.
  *
- * @package core
- * @category dml
- * @subpackage dml
- * @copyright 2008 Petr Skoda (http://skodak.org)
- * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package    core_dml
+ * @copyright  2008 Petr Skoda (http://skodak.org)
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->libdir.'/dml/database_column_info.php');
-require_once($CFG->libdir.'/dml/moodle_recordset.php');
-require_once($CFG->libdir.'/dml/moodle_transaction.php');
-
-/// GLOBAL CONSTANTS /////////////////////////////////////////////////////////
+require_once(__DIR__.'/database_column_info.php');
+require_once(__DIR__.'/moodle_recordset.php');
+require_once(__DIR__.'/moodle_transaction.php');
 
 /** SQL_PARAMS_NAMED - Bitmask, indicates :name type parameters are supported by db backend. */
 define('SQL_PARAMS_NAMED', 1);
@@ -61,8 +56,7 @@ define('SQL_QUERY_AUX', 5);
  * Abstract class representing moodle database interface.
  * @link http://docs.moodle.org/dev/DML_functions
  *
- * @package    core
- * @category   dml
+ * @package    core_dml
  * @copyright  2008 Petr Skoda (http://skodak.org)
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -89,7 +83,7 @@ abstract class moodle_database {
     /** @var string Prefix added to table names. */
     protected $prefix;
 
-    /** @var array Database or driver specific options, such as sockets or TCPIP db connections. */
+    /** @var array Database or driver specific options, such as sockets or TCP/IP db connections. */
     protected $dboptions;
 
     /** @var bool True means non-moodle external database used.*/
@@ -123,6 +117,9 @@ abstract class moodle_database {
     private $transactions = array();
     /** @var bool Flag used to force rollback of all current transactions. */
     private $force_rollback = false;
+
+    /** @var string MD5 of settings used for connection. Used by MUC as an identifier. */
+    private $settingshash;
 
     /**
      * @var int internal temporary variable used to fix params. Its used by {@link _fix_sql_params_dollar_callback()}.
@@ -295,6 +292,20 @@ abstract class moodle_database {
     }
 
     /**
+     * Returns a hash for the settings used during connection.
+     *
+     * If not already requested it is generated and stored in a private property.
+     *
+     * @return string
+     */
+    protected function get_settings_hash() {
+        if (empty($this->settingshash)) {
+            $this->settingshash = md5($this->dbhost . $this->dbuser . $this->dbname . $this->prefix);
+        }
+        return $this->settingshash;
+    }
+
+    /**
      * Attempt to create the database
      * @param string $dbhost The database host.
      * @param string $dbuser The database user to connect as.
@@ -324,17 +335,19 @@ abstract class moodle_database {
             $backtrace = $lowesttransaction->get_backtrace();
 
             if (defined('PHPUNIT_TEST') and PHPUNIT_TEST) {
-                //no need to log sudden exits in our PHPunit test cases
+                //no need to log sudden exits in our PHPUnit test cases
             } else {
                 error_log('Potential coding error - active database transaction detected when disposing database:'."\n".format_backtrace($backtrace, true));
             }
             $this->force_transaction_rollback();
         }
-        if ($this->used_for_db_sessions) {
-            // this is needed because we need to save session to db before closing it
+        // Always terminate sessions here to make it consistent,
+        // this is needed because we need to save session to db before closing it.
+        if (function_exists('session_get_instance')) {
             session_get_instance()->write_close();
-            $this->used_for_db_sessions = false;
         }
+        $this->used_for_db_sessions = false;
+
         if ($this->temptables) {
             $this->temptables->dispose();
             $this->temptables = null;
@@ -422,7 +435,7 @@ abstract class moodle_database {
 
     /**
      * This logs the last query based on 'logall', 'logslow' and 'logerrors' options configured via $CFG->dboptions .
-     * @param string $error or false if not error
+     * @param string|bool $error or false if not error
      * @return void
      */
     public function query_log($error=false) {
@@ -463,7 +476,7 @@ abstract class moodle_database {
 
     /**
      * Returns database server info array
-     * @return array Array containing 'description' and 'version' atleast.
+     * @return array Array containing 'description' and 'version' at least.
      */
     public abstract function get_server_info();
 
@@ -580,21 +593,38 @@ abstract class moodle_database {
      * @return array An array containing sql 'where' part and 'params'
      */
     protected function where_clause_list($field, array $values) {
+        if (empty($values)) {
+            return array("1 = 2", array()); // Fake condition, won't return rows ever. MDL-17645
+        }
+
+        // Note: Do not use get_in_or_equal() because it can not deal with bools and nulls.
+
         $params = array();
-        $select = array();
+        $select = "";
         $values = (array)$values;
         foreach ($values as $value) {
             if (is_bool($value)) {
                 $value = (int)$value;
             }
             if (is_null($value)) {
-                $select[] = "$field IS NULL";
+                $select = "$field IS NULL";
             } else {
-                $select[] = "$field = ?";
                 $params[] = $value;
             }
         }
-        $select = implode(" OR ", $select);
+        if ($params) {
+            if ($select !== "") {
+                $select = "$select OR ";
+            }
+            $count = count($params);
+            if ($count == 1) {
+                $select = $select."$field = ?";
+            } else {
+                $qs = str_repeat(',?', $count);
+                $qs = ltrim($qs, ',');
+                $select = $select."$field IN ($qs)";
+            }
+        }
         return array($select, $params);
     }
 
@@ -687,6 +717,7 @@ abstract class moodle_database {
      * Internal private utitlity function used to fix parameters.
      * Used with {@link preg_replace_callback()}
      * @param array $match Refer to preg_replace_callback usage for description.
+     * @return string
      */
     private function _fix_sql_params_dollar_callback($match) {
         $this->fix_sql_params_i++;
@@ -697,6 +728,7 @@ abstract class moodle_database {
      * Detects object parameters and throws exception if found
      * @param mixed $value
      * @return void
+     * @throws coding_exception if object detected
      */
     protected function detect_objects($value) {
         if (is_object($value)) {
@@ -723,7 +755,7 @@ abstract class moodle_database {
             $params[$key] = is_bool($value) ? (int)$value : $value;
         }
 
-        // NICOLAS C: Fixed regexp for negative backwards lookahead of double colons. Thanks for Sam Marshall's help
+        // NICOLAS C: Fixed regexp for negative backwards look-ahead of double colons. Thanks for Sam Marshall's help
         $named_count = preg_match_all('/(?<!:):[a-z][a-z0-9_]*/', $sql, $named_matches); // :: used in pgsql casts
         $dollar_count = preg_match_all('/\$[1-9][0-9]*/', $sql, $dollar_matches);
         $q_count     = substr_count($sql, '?');
@@ -896,6 +928,9 @@ abstract class moodle_database {
     public function reset_caches() {
         $this->columns = array();
         $this->tables  = null;
+        // Purge MUC as well
+        $identifiers = array('dbfamily' => $this->get_dbfamily(), 'settings' => $this->get_settings_hash());
+        cache_helper::purge_by_definition('core', 'databasemeta', $identifiers);
     }
 
     /**
@@ -1038,10 +1073,6 @@ abstract class moodle_database {
      */
     public function get_recordset_list($table, $field, array $values, $sort='', $fields='*', $limitfrom=0, $limitnum=0) {
         list($select, $params) = $this->where_clause_list($field, $values);
-        if (empty($select)) {
-            $select = '1 = 2'; // Fake condition, won't return rows ever. MDL-17645
-            $params = array();
-        }
         return $this->get_recordset_select($table, $select, $params, $sort, $fields, $limitfrom, $limitnum);
     }
 
@@ -1093,6 +1124,20 @@ abstract class moodle_database {
     public abstract function get_recordset_sql($sql, array $params=null, $limitfrom=0, $limitnum=0);
 
     /**
+     * Get all records from a table.
+     *
+     * This method works around potential memory problems and may improve performance,
+     * this method may block access to table until the recordset is closed.
+     *
+     * @param string $table Name of database table.
+     * @return moodle_recordset A moodle_recordset instance {@link function get_recordset}.
+     * @throws dml_exception A DML specific exception is thrown for any errors.
+     */
+    public function export_table_recordset($table) {
+        return $this->get_recordset($table, array());
+    }
+
+    /**
      * Get a number of records as an array of objects where all the given conditions met.
      *
      * If the query succeeds and returns at least one record, the
@@ -1136,10 +1181,6 @@ abstract class moodle_database {
      */
     public function get_records_list($table, $field, array $values, $sort='', $fields='*', $limitfrom=0, $limitnum=0) {
         list($select, $params) = $this->where_clause_list($field, $values);
-        if (empty($select)) {
-            // nothing to return
-            return array();
-        }
         return $this->get_records_select($table, $select, $params, $sort, $fields, $limitfrom, $limitnum);
     }
 
@@ -1509,7 +1550,6 @@ abstract class moodle_database {
      */
     public abstract function update_record($table, $dataobject, $bulk=false);
 
-
     /**
      * Set a single field in every table record where all the given conditions met.
      *
@@ -1583,11 +1623,11 @@ abstract class moodle_database {
      * @throws dml_exception A DML specific exception is thrown for any errors.
      */
     public function count_records_sql($sql, array $params=null) {
-        if ($count = $this->get_field_sql($sql, $params)) {
-            return $count;
-        } else {
-            return 0;
+        $count = $this->get_field_sql($sql, $params);
+        if ($count === false or !is_number($count) or $count < 0) {
+            throw new coding_exception("count_records_sql() expects the first field to contain non-negative number from COUNT(), '$count' found instead.");
         }
+        return (int)$count;
     }
 
     /**
@@ -1667,10 +1707,6 @@ abstract class moodle_database {
      */
     public function delete_records_list($table, $field, array $values) {
         list($select, $params) = $this->where_clause_list($field, $values);
-        if (empty($select)) {
-            // nothing to delete
-            return true;
-        }
         return $this->delete_records_select($table, $select, $params);
     }
 
@@ -1685,9 +1721,6 @@ abstract class moodle_database {
      */
     public abstract function delete_records_select($table, $select, array $params=null);
 
-
-
-// sql constructs
     /**
      * Returns the FROM clause required by some DBs in all SELECT statements.
      *
@@ -1907,7 +1940,7 @@ abstract class moodle_database {
      * because it's really slooooooow.
      *
      * @param string $fieldname The name of the TEXT field we need to order by.
-     * @param string $numchars The number of chars to use for the ordering (defaults to 32).
+     * @param int $numchars The number of chars to use for the ordering (defaults to 32).
      * @return string The piece of SQL code to be used in your statement.
      */
     public function sql_order_by_text($fieldname, $numchars=32) {
@@ -2050,8 +2083,6 @@ abstract class moodle_database {
         return '';
     }
 
-// transactions
-
     /**
      * Checks and returns true if transactions are supported.
      *
@@ -2079,6 +2110,7 @@ abstract class moodle_database {
      * This is a test that throws an exception if transaction in progress.
      * This test does not force rollback of active transactions.
      * @return void
+     * @throws dml_transaction_exception if stansaction active
      */
     public function transactions_forbidden() {
         if ($this->is_transaction_started()) {
@@ -2232,7 +2264,6 @@ abstract class moodle_database {
         $this->force_rollback = false;
     }
 
-// session locking
     /**
      * Is session lock supported in this driver?
      * @return bool
@@ -2261,7 +2292,6 @@ abstract class moodle_database {
     public function release_session_lock($rowid) {
     }
 
-// performance and logging
     /**
      * Returns the number of reads done by this database.
      * @return int Number of reads.

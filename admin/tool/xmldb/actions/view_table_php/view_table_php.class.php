@@ -15,8 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * @package    tool
- * @subpackage xmldb
+ * @package    tool_xmldb
  * @copyright  2003 onwards Eloy Lafuente (stronk7) {@link http://stronk7.com}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -25,8 +24,7 @@
  * This class will show the PHP needed (upgrade block) to perform
  * the desired DDL action with the specified field/key/index
  *
- * @package    tool
- * @subpackage xmldb
+ * @package    tool_xmldb
  * @copyright  2003 onwards Eloy Lafuente (stronk7) {@link http://stronk7.com}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -79,18 +77,18 @@ class view_table_php extends XMLDBAction {
 
         // Get the correct dirs
         if (!empty($XMLDB->dbdirs)) {
-            $dbdir =& $XMLDB->dbdirs[$dirpath];
+            $dbdir = $XMLDB->dbdirs[$dirpath];
         } else {
             return false;
         }
         if (!empty($XMLDB->editeddirs)) {
-            $editeddir =& $XMLDB->editeddirs[$dirpath];
-            $structure =& $editeddir->xml_file->getStructure();
+            $editeddir = $XMLDB->editeddirs[$dirpath];
+            $structure = $editeddir->xml_file->getStructure();
         }
 
         $tableparam = required_param('table', PARAM_PATH);
 
-        $table =& $structure->getTable($tableparam);
+        $table = $structure->getTable($tableparam);
         $fields = $table->getFields();
         $field = reset($fields);
         $defaultfieldkeyindex = null;
@@ -165,7 +163,7 @@ class view_table_php extends XMLDBAction {
         $o.= '    <input type="hidden" name ="table" value="' . s($tableparam) . '" />';
         $o.= '    <input type="hidden" name ="action" value="view_table_php" />';
         $o.= '    <table id="formelements" class="boxaligncenter" cellpadding="5">';
-        $o.= '      <tr><td><label for="action" accesskey="c">' . $this->str['selectaction'] .' </label>' . html_writer::select($popcommands, 'command', $commandparam, false) . '&nbsp;<label for="fieldkeyindex" accesskey="f">' . $this->str['selectfieldkeyindex'] . ' </label>' .html_writer::select($popfields, 'fieldkeyindex', $origfieldkeyindexparam, false) . '</td></tr>';
+        $o.= '      <tr><td><label for="menucommand" accesskey="c">' . $this->str['selectaction'] .' </label>' . html_writer::select($popcommands, 'command', $commandparam, false) . '&nbsp;<label for="menufieldkeyindex" accesskey="f">' . $this->str['selectfieldkeyindex'] . ' </label>' .html_writer::select($popfields, 'fieldkeyindex', $origfieldkeyindexparam, false) . '</td></tr>';
         $o.= '      <tr><td colspan="2" align="center"><input type="submit" value="' .$this->str['view'] . '" /></td></tr>';
         $o.= '    </table>';
         $o.= '</div></form>';

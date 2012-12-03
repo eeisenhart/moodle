@@ -2,7 +2,7 @@ M.mod_assign = {};
 
 M.mod_assign.init_tree = function(Y, expand_all, htmlid) {
     Y.use('yui2-treeview', function(Y) {
-        var tree = new YAHOO.widget.TreeView(htmlid);
+        var tree = new Y.YUI2.widget.TreeView(htmlid);
 
         tree.subscribe("clickEvent", function(node, event) {
             // we want normal clicking which redirects to url
@@ -76,7 +76,17 @@ M.mod_assign.init_grading_table = function(Y) {
                 alert(M.str.assign.nousersselected);
                 e.preventDefault();
             } else {
-                if (!confirm(eval('M.str.assign.batchoperationconfirm' + operation.get('value')))) {
+                action = operation.get('value');
+                prefix = 'plugingradingbatchoperation_';
+                if (action.indexOf(prefix) == 0) {
+                    pluginaction = action.substr(prefix.length);
+                    plugin = pluginaction.split('_')[0];
+                    action = pluginaction.substr(plugin.length + 1);
+                    confirmmessage = eval('M.str.assignfeedback_' + plugin + '.batchoperationconfirm' + action);
+                } else {
+                    confirmmessage = eval('M.str.assign.batchoperationconfirm' + operation.get('value'));
+                }
+                if (!confirm(confirmmessage)) {
                     e.preventDefault();
                 }
             }
@@ -110,61 +120,95 @@ M.mod_assign.init_grading_table = function(Y) {
     });
 };
 
-M.mod_assign.check_dirty_quickgrading_form = function(e) {
-    if (!M.core_formchangechecker.get_form_dirty_state()) {
-        // the form is not dirty, so don't display any message
-        return;
-    }
-
-    // This is the error message that we'll show to browsers which support it
-    var warningmessage = 'There are unsaved quickgrading changes. Do you really wanto to leave this page?';
-
-    // Most browsers are happy with the returnValue being set on the event
-    // But some browsers do not consistently pass the event
-    if (e) {
-        e.returnValue = warningmessage;
-    }
-
-    // But some require it to be returned instead
-    return warningmessage;
-}
 M.mod_assign.init_grading_options = function(Y) {
     Y.use('node', function(Y) {
-
         var paginationelement = Y.one('#id_perpage');
         paginationelement.on('change', function(e) {
             Y.one('form.gradingoptionsform').submit();
         });
         var filterelement = Y.one('#id_filter');
-        filterelement.on('change', function(e) {
-            Y.one('form.gradingoptionsform').submit();
-        });
-        var quickgradingelement = Y.one('#id_quickgrading');
-        quickgradingelement.on('change', function(e) {
-            Y.one('form.gradingoptionsform').submit();
-        });
-
-    });
-
-
-};
-// override the default dirty form behaviour to ignore any input with the class "ignoredirty"
-M.mod_assign.set_form_changed = M.core_formchangechecker.set_form_changed;
-M.core_formchangechecker.set_form_changed = function(e) {
-    var target = e.currentTarget;
-    if (!target.hasClass('ignoredirty')) {
-        M.mod_assign.set_form_changed(e);
-    }
-}
-
-M.mod_assign.get_form_dirty_state = M.core_formchangechecker.get_form_dirty_state;
-M.core_formchangechecker.get_form_dirty_state = function() {
-    var state = M.core_formchangechecker.stateinformation;
-    if (state.focused_element) {
-        if (state.focused_element.element.hasClass('ignoredirty')) {
-            state.focused_element.initial_value = state.focused_element.element.get('value')
+        if (filterelement) {
+            filterelement.on('change', function(e) {
+                Y.one('form.gradingoptionsform').submit();
+            });
         }
-    }
-    return M.mod_assign.get_form_dirty_state();
-}
+        var quickgradingelement = Y.one('#id_quickgrading');
+        if (quickgradingelement) {
+            quickgradingelement.on('change', function(e) {
+                Y.one('form.gradingoptionsform').submit();
+            });
+        }
+    });
+};
 
+M.mod_assign.init_grade_change = function(Y) {
+    var gradenode = Y.one('#id_grade');
+    if (gradenode) {
+        var originalvalue = gradenode.get('value');
+        gradenode.on('change', function() {
+            if (gradenode.get('value') != originalvalue) {
+                alert(M.str.mod_assign.changegradewarning);
+            }
+        });
+    }
+};
+
+M.mod_assign.init_plugin_summary = function(Y, subtype, type, submissionid) {
+    suffix = subtype + '_' + type + '_' + submissionid;
+    classname = 'contract_' + suffix;
+    contract = Y.one('.' + classname);
+    if (contract) {
+        contract.on('click', function(e) {
+            img = e.target;
+            imgclasses = img.getAttribute('class').split(' ');
+            for (i = 0; i < imgclasses.length; i++) {
+                classname = imgclasses[i];
+                if (classname.indexOf('contract_') == 0) {
+                    thissuffix = classname.substr(9);
+                }
+            }
+            fullclassname = 'full_' + thissuffix;
+            full = Y.one('.' + fullclassname);
+            if (full) {
+                full.hide(true);
+            }
+            summaryclassname = 'summary_' + thissuffix;
+            summary = Y.one('.' + summaryclassname);
+            if (summary) {
+                summary.show(true);
+            }
+        });
+    }
+    classname = 'expand_' + suffix;
+    expand = Y.one('.' + classname);
+
+    full = Y.one('.full_' + suffix);
+    if (full) {
+        full.hide();
+        full.toggleClass('hidefull');
+    }
+    if (expand) {
+        expand.on('click', function(e) {
+            img = e.target;
+            imgclasses = img.getAttribute('class').split(' ');
+            for (i = 0; i < imgclasses.length; i++) {
+                classname = imgclasses[i];
+                if (classname.indexOf('expand_') == 0) {
+                    thissuffix = classname.substr(7);
+                }
+            }
+            summaryclassname = 'summary_' + thissuffix;
+            summary = Y.one('.' + summaryclassname);
+            if (summary) {
+                summary.hide(true);
+            }
+            fullclassname = 'full_' + thissuffix;
+            full = Y.one('.' + fullclassname);
+            if (full) {
+                full.show(true);
+            }
+        });
+    }
+
+
+}

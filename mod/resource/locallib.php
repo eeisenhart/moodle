@@ -66,7 +66,7 @@ function resource_display_embed($resource, $cm, $course, $file) {
 
     $clicktoopen = resource_get_clicktoopen($file, $resource->revision);
 
-    $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+    $context = context_module::instance($cm->id);
     $path = '/'.$context->id.'/mod_resource/content/'.$resource->revision.$file->get_filepath().$file->get_filename();
     $fullurl = file_encode_url($CFG->wwwroot.'/pluginfile.php', $path, false);
     $moodleurl = new moodle_url('/pluginfile.php' . $path);
@@ -82,7 +82,7 @@ function resource_display_embed($resource, $cm, $course, $file) {
         core_media::OPTION_BLOCK => true,
     );
 
-    if (in_array($mimetype, array('image/gif','image/jpeg','image/png'))) {  // It's an image
+    if (file_mimetype_in_typegroup($mimetype, 'web_image')) {  // It's an image
         $code = resourcelib_embed_image($fullurl, $title);
 
     } else if ($mimetype === 'application/pdf') {
@@ -132,7 +132,7 @@ function resource_display_frame($resource, $cm, $course, $file) {
 
     } else {
         $config = get_config('resource');
-        $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+        $context = context_module::instance($cm->id);
         $path = '/'.$context->id.'/mod_resource/content/'.$resource->revision.$file->get_filepath().$file->get_filename();
         $fileurl = file_encode_url($CFG->wwwroot.'/pluginfile.php', $path, false);
         $navurl = "$CFG->wwwroot/mod/resource/view.php?id=$cm->id&amp;frameset=top";
@@ -295,23 +295,27 @@ function resource_get_optional_details($resource, $cm) {
         $context = context_module::instance($cm->id);
         $size = '';
         $type = '';
-        if (!empty($options['showsize'])) {
-            $size = display_size($DB->get_field_sql(
-                    'SELECT SUM(filesize) FROM {files} WHERE contextid=?', array($context->id)));
+        $fs = get_file_storage();
+        $files = $fs->get_area_files($context->id, 'mod_resource', 'content', 0, 'sortorder DESC, id ASC', false);
+        if (!empty($options['showsize']) && count($files)) {
+            $sizebytes = 0;
+            foreach ($files as $file) {
+                // this will also synchronize the file size for external files if needed
+                $sizebytes += $file->get_filesize();
+            }
+            if ($sizebytes) {
+                $size = display_size($sizebytes);
+            }
         }
-        if (!empty($options['showtype'])) {
+        if (!empty($options['showtype']) && count($files)) {
             // For a typical file resource, the sortorder is 1 for the main file
             // and 0 for all other files. This sort approach is used just in case
             // there are situations where the file has a different sort order
-            $record = $DB->get_record_sql(
-                    'SELECT filename, mimetype FROM {files} WHERE contextid=? ORDER BY sortorder DESC',
-                    array($context->id), IGNORE_MULTIPLE);
+            $mainfile = reset($files);
+            $type = get_mimetype_description($mainfile);
             // Only show type if it is not unknown
-            if ($record) {
-                $type = get_mimetype_description($record);
-                if ($type === get_mimetype_description('document/unknown')) {
-                    $type = '';
-                }
+            if ($type === get_mimetype_description('document/unknown')) {
+                $type = '';
             }
         }
 
@@ -409,19 +413,11 @@ function resource_print_filenotfound($resource, $cm, $course) {
  * @return int display type constant
  */
 function resource_get_final_display_type($resource) {
-    global $CFG;
+    global $CFG, $PAGE;
 
     if ($resource->display != RESOURCELIB_DISPLAY_AUTO) {
         return $resource->display;
     }
-
-    static $download = array('application/zip', 'application/x-tar', 'application/g-zip');    // binary formats
-    static $embed    = array('image/gif', 'image/jpeg', 'image/png', 'image/svg+xml',         // images
-                             'application/x-shockwave-flash', 'video/x-flv', 'video/x-ms-wm', // video formats
-                             'video/quicktime', 'video/mpeg', 'video/mp4',
-                             'audio/mp3', 'audio/x-realaudio-plugin', 'x-realaudio-plugin',   // audio formats
-                             'application/pdf', 'text/html',
-                            );
 
     if (empty($resource->mainfile)) {
         return RESOURCELIB_DISPLAY_DOWNLOAD;
@@ -429,10 +425,10 @@ function resource_get_final_display_type($resource) {
         $mimetype = mimeinfo('type', $resource->mainfile);
     }
 
-    if (in_array($mimetype, $download)) {
+    if (file_mimetype_in_typegroup($mimetype, 'archive')) {
         return RESOURCELIB_DISPLAY_DOWNLOAD;
     }
-    if (in_array($mimetype, $embed)) {
+    if (file_mimetype_in_typegroup($mimetype, array('web_image', '.pdf', '.htm', 'web_video', 'web_audio'))) {
         return RESOURCELIB_DISPLAY_EMBED;
     }
 
@@ -464,7 +460,7 @@ function resource_set_mainfile($data) {
     $cmid = $data->coursemodule;
     $draftitemid = $data->files;
 
-    $context = get_context_instance(CONTEXT_MODULE, $cmid);
+    $context = context_module::instance($cmid);
     if ($draftitemid) {
         file_save_draft_area_files($draftitemid, $context->id, 'mod_resource', 'content', 0, array('subdirs'=>true));
     }

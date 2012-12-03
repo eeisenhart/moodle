@@ -60,6 +60,17 @@ class mod_assign_grade_form extends moodleform {
     }
 
     /**
+     * This is required so when using "Save and next", each form is not defaulted to the previous form.
+     * Giving each form a unique identitifer is enough to prevent this (include the rownum in the form name).
+     *
+     * @return string - The unique identifier for this form.
+     */
+    protected function get_form_identifier() {
+        $params = $this->_customdata[2];
+        return get_class($this) . '_' . $params['rownum'];
+    }
+
+    /**
      * Perform minimal validation on the grade form
      * @param array $data
      * @param array $files
@@ -73,11 +84,11 @@ class mod_assign_grade_form extends moodleform {
         }
 
         if ($this->assignment->get_instance()->grade > 0) {
-            if (!is_numeric($data['grade']) and (!empty($data['grade']))) {
+            if (unformat_float($data['grade']) === null && (!empty($data['grade']))) {
                 $errors['grade'] = get_string('invalidfloatforgrade', 'assign', $data['grade']);
-            } else if ($data['grade'] > $this->assignment->get_instance()->grade) {
+            } else if (unformat_float($data['grade']) > $this->assignment->get_instance()->grade) {
                 $errors['grade'] = get_string('gradeabovemaximum', 'assign', $this->assignment->get_instance()->grade);
-            } else if ($data['grade'] < 0) {
+            } else if (unformat_float($data['grade']) < 0) {
                 $errors['grade'] = get_string('gradebelowzero', 'assign');
             }
         } else {

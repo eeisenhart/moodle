@@ -27,7 +27,11 @@
  * @param int $oldversion
  * @return bool
  */
-function xmldb_submission_file_upgrade($oldversion) {
+function xmldb_assignsubmission_file_upgrade($oldversion) {
+    // Moodle v2.3.0 release upgrade line
+    // Put any upgrade step following this
+
+
     return true;
 }
 

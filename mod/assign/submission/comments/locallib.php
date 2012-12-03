@@ -53,7 +53,7 @@ class assign_submission_comments extends assign_submission_plugin {
     * @param bool $showviewlink - If the comments are long this is set to true so they can be shown in a separate page
     * @return string
     */
-   public function view_summary(stdClass $submission, $showviewlink) {
+   public function view_summary(stdClass $submission, & $showviewlink) {
 
         // never show a link to view full submission
         $showviewlink = false;
@@ -162,6 +162,18 @@ class assign_submission_comments extends assign_submission_plugin {
      */
     public function allow_submissions() {
         return false;
+    }
+
+    /**
+     * If blind marking is enabled then disable this plugin (it shows names)
+     *
+     * @return bool
+     */
+    public function is_enabled() {
+        if ($this->assignment->has_instance() && $this->assignment->is_blind_marking()) {
+            return false;
+        }
+        return parent::is_enabled();
     }
 
 }

@@ -133,7 +133,7 @@ class moodle_exception extends Exception {
         $this->module    = $module;
         $this->link      = $link;
         $this->a         = $a;
-        $this->debuginfo = $debuginfo;
+        $this->debuginfo = is_null($debuginfo) ? null : (string)$debuginfo;
 
         if (get_string_manager()->string_exists($errorcode, $module)) {
             $message = get_string($errorcode, $module, $a);
@@ -206,7 +206,7 @@ class required_capability_exception extends moodle_exception {
         $capabilityname = get_capability_string($capability);
         if ($context->contextlevel == CONTEXT_MODULE and preg_match('/:view$/', $capability)) {
             // we can not go to mod/xx/view.php because we most probably do not have cap to view it, let's go to course instead
-            $paranetcontext = get_context_instance_by_id(get_parent_contextid($context));
+            $paranetcontext = context::instance_by_id(get_parent_contextid($context));
             $link = get_context_url($paranetcontext);
         } else {
             $link = get_context_url($context);
@@ -486,7 +486,7 @@ function get_exception_info($ex) {
         $module = 'error';
         $a = $ex->getMessage();
         $link = '';
-        $debuginfo = null;
+        $debuginfo = '';
     }
 
     // Append the error code to the debug info to make grepping and googling easier
@@ -565,20 +565,49 @@ function get_exception_info($ex) {
 }
 
 /**
- * Returns the Moodle Docs URL in the users language
+ * Returns the Moodle Docs URL in the users language for a given 'More help' link.
  *
- * @global object
- * @param string $path the end of the URL.
- * @return string The MoodleDocs URL in the user's language. for example {@link http://docs.moodle.org/en/ http://docs.moodle.org/en/$path}
+ * There are three cases:
+ *
+ * 1. In the normal case, $path will be a short relative path 'component/thing',
+ * like 'mod/folder/view' 'group/import'. This gets turned into an link to
+ * MoodleDocs in the user's language, and for the appropriate Moodle version.
+ * E.g. 'group/import' may become 'http://docs.moodle.org/2x/en/group/import'.
+ * The 'http://docs.moodle.org' bit comes from $CFG->docroot.
+ *
+ * This is the only option that should be used in standard Moodle code. The other
+ * two options have been implemented because they are useful for third-party plugins.
+ *
+ * 2. $path may be an absolute URL, starting http:// or https://. In this case,
+ * the link is used as is.
+ *
+ * 3. $path may start %%WWWROOT%%, in which case that is replaced by
+ * $CFG->wwwroot to make the link.
+ *
+ * @param string $path the place to link to. See above for details.
+ * @return string The MoodleDocs URL in the user's language. for example @link http://docs.moodle.org/2x/en/$path}
  */
-function get_docs_url($path=null) {
+function get_docs_url($path = null) {
     global $CFG;
+
+    // Absolute URLs are used unmodified.
+    if (substr($path, 0, 7) === 'http://' || substr($path, 0, 8) === 'https://') {
+        return $path;
+    }
+
+    // Paths starting %%WWWROOT%% have that replaced by $CFG->wwwroot.
+    if (substr($path, 0, 11) === '%%WWWROOT%%') {
+        return $CFG->wwwroot . substr($path, 11);
+    }
+
+    // Otherwise we do the normal case, and construct a MoodleDocs URL relative to $CFG->docroot.
+
     // Check that $CFG->branch has been set up, during installation it won't be.
     if (empty($CFG->branch)) {
-        // It's not there yet so look at version.php
+        // It's not there yet so look at version.php.
         include($CFG->dirroot.'/version.php');
     } else {
-        // We can use $CFG->branch and avoid having to include version.php
+        // We can use $CFG->branch and avoid having to include version.php.
         $branch = $CFG->branch;
     }
     // ensure branch is valid.
@@ -592,7 +621,7 @@ function get_docs_url($path=null) {
     if (!empty($CFG->docroot)) {
         return $CFG->docroot . '/' . $branch . '/' . current_language() . '/' . $path;
     } else {
-        return 'http://docs.moodle.org/'. $branch . '/en/' . $path;
+        return 'http://docs.moodle.org/'. $branch . '/' . current_language() . '/' . $path;
     }
 }
 
@@ -1097,7 +1126,7 @@ function disable_output_buffering() {
  */
 function redirect_if_major_upgrade_required() {
     global $CFG;
-    $lastmajordbchanges = 2012051700;
+    $lastmajordbchanges = 2012110201;
     if (empty($CFG->version) or (int)$CFG->version < $lastmajordbchanges or
             during_initial_install() or !empty($CFG->adminsetuppending)) {
         try {
@@ -1263,41 +1292,6 @@ function make_cache_directory($directory, $exceptiononerror = true) {
     return make_writable_directory("$CFG->cachedir/$directory", $exceptiononerror);
 }
 
-
-/**
- * Initialises an Memcached instance
- * @global memcached $MCACHE
- * @return boolean Returns true if an mcached instance could be successfully initialised
- */
-function init_memcached() {
-    global $CFG, $MCACHE;
-
-    include_once($CFG->libdir . '/memcached.class.php');
-    $MCACHE = new memcached;
-    if ($MCACHE->status()) {
-        return true;
-    }
-    unset($MCACHE);
-    return false;
-}
-
-/**
- * Initialises an eAccelerator instance
- * @global eaccelerator $MCACHE
- * @return boolean Returns true if an eAccelerator instance could be successfully initialised
- */
-function init_eaccelerator() {
-    global $CFG, $MCACHE;
-
-    include_once($CFG->libdir . '/eaccelerator.class.php');
-    $MCACHE = new eaccelerator;
-    if ($MCACHE->status()) {
-        return true;
-    }
-    unset($MCACHE);
-    return false;
-}
-
 /**
  * Checks if current user is a web crawler.
  *
@@ -1320,11 +1314,17 @@ function is_web_crawler() {
             return true;
         } else if (strpos($_SERVER['HTTP_USER_AGENT'], '[ZSEBOT]') !== false ) {  // Zoomspider
             return true;
-        } else if (strpos($_SERVER['HTTP_USER_AGENT'], 'MSNBOT') !== false ) {  // MSN Search
+        } else if (stripos($_SERVER['HTTP_USER_AGENT'], 'msnbot') !== false ) {  // MSN Search
+            return true;
+        } else if (strpos($_SERVER['HTTP_USER_AGENT'], 'bingbot') !== false ) {  // Bing
             return true;
         } else if (strpos($_SERVER['HTTP_USER_AGENT'], 'Yandex') !== false ) {
             return true;
         } else if (strpos($_SERVER['HTTP_USER_AGENT'], 'AltaVista') !== false ) {
+            return true;
+        } else if (stripos($_SERVER['HTTP_USER_AGENT'], 'baiduspider') !== false ) {  // Baidu
+            return true;
+        } else if (strpos($_SERVER['HTTP_USER_AGENT'], 'Teoma') !== false ) {  // Ask.com
             return true;
         }
     }
@@ -1444,7 +1444,12 @@ border-color:black; background-color:#ffffee; border-style:solid; border-radius:
 width: 80%; -moz-border-radius: 20px; padding: 15px">
 ' . $message . '
 </div>';
-        if (!empty($CFG->debug) && $CFG->debug >= DEBUG_DEVELOPER) {
+        // Check whether debug is set.
+        $debug = (!empty($CFG->debug) && $CFG->debug >= DEBUG_DEVELOPER);
+        // Also check we have it set in the config file. This occurs if the method to read the config table from the
+        // database fails, reading from the config table is the first database interaction we have.
+        $debug = $debug || (!empty($CFG->config_php_settings['debug'])  && $CFG->config_php_settings['debug'] >= DEBUG_DEVELOPER );
+        if ($debug) {
             if (!empty($debuginfo)) {
                 $debuginfo = s($debuginfo); // removes all nasty JS
                 $debuginfo = str_replace("\n", '<br />', $debuginfo); // keep newlines
@@ -1511,6 +1516,7 @@ width: 80%; -moz-border-radius: 20px; padding: 15px">
 
         // better disable any caching
         @header('Content-Type: text/html; charset=utf-8');
+        @header('X-UA-Compatible: IE=edge');
         @header('Cache-Control: no-store, no-cache, must-revalidate');
         @header('Cache-Control: post-check=0, pre-check=0', false);
         @header('Pragma: no-cache');

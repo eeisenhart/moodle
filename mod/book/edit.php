@@ -1,5 +1,5 @@
 <?php
-// This file is part of Book module for Moodle - http://moodle.org/
+// This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -74,7 +74,7 @@ if ($mform->is_cancelled()) {
         $DB->update_record('book_chapters', $data);
 
         add_to_log($course->id, 'course', 'update mod', '../mod/book/view.php?id='.$cm->id, 'book '.$book->id);
-        add_to_log($course->id, 'book', 'update', 'view.php?id='.$cm->id.'&chapterid='.$data->id, $book->id, $cm->id);
+        add_to_log($course->id, 'book', 'update chapter', 'view.php?id='.$cm->id.'&chapterid='.$data->id, $data->id, $cm->id);
 
     } else {
         // adding new chapter
@@ -100,7 +100,7 @@ if ($mform->is_cancelled()) {
         $DB->set_field('book', 'revision', $book->revision+1, array('id'=>$book->id));
 
         add_to_log($course->id, 'course', 'update mod', '../mod/book/view.php?id='.$cm->id, 'book '.$book->id);
-        add_to_log($course->id, 'book', 'update', 'view.php?id='.$cm->id.'&chapterid='.$data->id, $book->id, $cm->id);
+        add_to_log($course->id, 'book', 'add chapter', 'view.php?id='.$cm->id.'&chapterid='.$data->id, $data->id, $cm->id);
     }
 
     book_preload_chapters($book); // fix structure
@@ -108,9 +108,8 @@ if ($mform->is_cancelled()) {
 }
 
 // Otherwise fill and print the form.
-$PAGE->set_title(format_string($book->name));
-$PAGE->add_body_class('mod_book');
-$PAGE->set_heading(format_string($course->fullname));
+$PAGE->set_title($book->name);
+$PAGE->set_heading($course->fullname);
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('editingchapter', 'mod_book'));

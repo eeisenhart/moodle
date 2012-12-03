@@ -34,28 +34,28 @@ if ($ADMIN->fulltree) {
     $settings->add($setting);
 
     // Display logo or heading
-    $name = 'theme_formal_white/displaylogo';
-    $title = get_string('displaylogo','theme_formal_white');
-    $description = get_string('displaylogodesc', 'theme_formal_white');
+    $name = 'theme_formal_white/headercontent';
+    $title = get_string('headercontent','theme_formal_white');
+    $description = get_string('headercontentdesc', 'theme_formal_white');
     $default = '1';
-    $choices = array(1=>get_string('moodlelogo', 'theme_formal_white'), 0=>get_string('heading', 'theme_formal_white'));
+    $choices = array(1=>get_string('displaylogo', 'theme_formal_white'), 0=>get_string('displayheading', 'theme_formal_white'));
     $setting = new admin_setting_configselect($name, $title, $description, $default, $choices);
     $settings->add($setting);
 
     // Custom site logo setting
-    $name = 'theme_formal_white/logo';
-    $title = get_string('logo','theme_formal_white');
-    $description = get_string('logodesc', 'theme_formal_white');
+    $name = 'theme_formal_white/customlogourl';
+    $title = get_string('customlogourl','theme_formal_white');
+    $description = get_string('customlogourldesc', 'theme_formal_white');
     $default = '';
-    $setting = new admin_setting_configtext($name, $title, $description, $default, PARAM_URL);
+    $setting = new admin_setting_configtext($name, $title, $description, $default, PARAM_RAW); // we want it accepting ../ at the beginning. Security is not at its top but Moodle trusts admins.
     $settings->add($setting);
 
     // Custom front page site logo setting
-    $name = 'theme_formal_white/frontpagelogo';
-    $title = get_string('frontpagelogo','theme_formal_white');
-    $description = get_string('frontpagelogodesc', 'theme_formal_white');
+    $name = 'theme_formal_white/frontpagelogourl';
+    $title = get_string('frontpagelogourl','theme_formal_white');
+    $description = get_string('frontpagelogourldesc', 'theme_formal_white');
     $default = '';
-    $setting = new admin_setting_configtext($name, $title, $description, $default, PARAM_URL);
+    $setting = new admin_setting_configtext($name, $title, $description, $default, PARAM_RAW); // we want it accepting ../ at the beginning. Security is not at its top but Moodle trusts admins.
     $settings->add($setting);
 
     // page header background colour setting

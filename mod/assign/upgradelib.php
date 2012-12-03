@@ -29,6 +29,12 @@ require_once($CFG->dirroot.'/mod/assign/locallib.php');
 /** Include accesslib.php */
 require_once($CFG->libdir.'/accesslib.php');
 
+/**
+ * The maximum amount of time to spend upgrading a single assignment.
+ * This is intentionally generous (5 mins) as the effect of a timeout
+ * for a legitimate upgrade would be quite harsh (roll back code will not run)
+ */
+define('ASSIGN_MAX_UPGRADE_TIME_SECS', 300);
 
 /**
  * Class to manage upgrades from mod_assignment to mod_assign
@@ -48,9 +54,7 @@ class assign_upgrade_manager {
      * @return bool true or false
      */
     public function upgrade_assignment($oldassignmentid, & $log) {
-        global $DB, $CFG;
         // steps to upgrade an assignment
-
         global $DB, $CFG, $USER;
         // steps to upgrade an assignment
 
@@ -58,6 +62,9 @@ class assign_upgrade_manager {
         if (!is_siteadmin($USER->id)) {
               return false;
         }
+
+        // should we use a shutdown handler to rollback on timeout?
+        @set_time_limit(ASSIGN_MAX_UPGRADE_TIME_SECS);
 
 
         // get the module details
@@ -77,11 +84,21 @@ class assign_upgrade_manager {
         $data->introformat = $oldassignment->introformat;
         $data->alwaysshowdescription = 1;
         $data->sendnotifications = $oldassignment->emailteachers;
+        $data->sendlatenotifications = $oldassignment->emailteachers;
         $data->duedate = $oldassignment->timedue;
         $data->allowsubmissionsfromdate = $oldassignment->timeavailable;
         $data->grade = $oldassignment->grade;
         $data->submissiondrafts = $oldassignment->resubmit;
-        $data->preventlatesubmissions = $oldassignment->preventlate;
+        $data->requiresubmissionstatement = 0;
+        $data->cutoffdate = 0;
+        // New way to specify no late submissions.
+        if ($oldassignment->preventlate) {
+            $data->cutoffdate = $data->duedate;
+        }
+        $data->teamsubmission = 0;
+        $data->requireallteammemberssubmit = 0;
+        $data->teamsubmissiongroupingid = 0;
+        $data->blindmarking = 0;
 
         $newassignment = new assign(null, null, null);
 
@@ -146,9 +163,18 @@ class assign_upgrade_manager {
 
             // upgrade completion data
             $DB->set_field('course_modules_completion', 'coursemoduleid', $newcoursemodule->id, array('coursemoduleid'=>$oldcoursemodule->id));
-            $DB->set_field('course_completion_criteria', 'module', 'assign', array('moduleinstance'=>$oldcoursemodule->id));
-            $DB->set_field('course_completion_criteria', 'moduleinstance', $newcoursemodule->id, array('moduleinstance'=>$oldcoursemodule->id));
+            $allcriteria = $DB->get_records('course_completion_criteria', array('moduleinstance'=>$oldcoursemodule->id));
+            foreach ($allcriteria as $criteria) {
+                $criteria->module = 'assign';
+                $criteria->moduleinstance = $newcoursemodule->id;
+                $DB->update_record('course_completion_criteria', $criteria);
+            }
             $completiondone = true;
+
+            // Migrate log entries so we don't lose them.
+            $logparams = array('cmid' => $oldcoursemodule->id, 'course' => $oldcoursemodule->course);
+            $DB->set_field('log', 'module', 'assign', $logparams);
+            $DB->set_field('log', 'cmid', $newcoursemodule->id, $logparams);
 
 
             // copy all the submission data (and get plugins to do their bit)
@@ -211,31 +237,42 @@ class assign_upgrade_manager {
             }
 
             $newassignment->update_calendar($newcoursemodule->id);
-            $newassignment->update_gradebook(false,$newcoursemodule->id);
 
-            // copy the grades from the old assignment to the new one
-            $DB->set_field('grade_items', 'itemmodule', 'assign', array('iteminstance'=>$oldassignment->id));
-            $DB->set_field('grade_items', 'iteminstance', $newassignment->get_instance()->id, array('iteminstance'=>$oldassignment->id));
+            // Reassociate grade_items from the old assignment instance to the new assign instance.
+            // This includes outcome linked grade_items.
+            $params = array('assign', $newassignment->get_instance()->id, 'assignment', $oldassignment->id);
+            $sql = 'UPDATE {grade_items} SET itemmodule = ?, iteminstance = ? WHERE itemmodule = ? AND iteminstance = ?';
+            $DB->execute($sql, $params);
+
             $gradesdone = true;
 
         } catch (Exception $exception) {
             $rollback = true;
-            $log .= get_string('conversionexception', 'mod_assign', $exception->getMessage());
+            $log .= get_string('conversionexception', 'mod_assign', $exception->error);
         }
 
         if ($rollback) {
             // roll back the grades changes
             if ($gradesdone) {
-                // copy the grades from the old assignment to the new one
-                $DB->set_field('grade_items', 'itemmodule', 'assignment', array('iteminstance'=>$newassignment->get_instance()->id));
-                $DB->set_field('grade_items', 'iteminstance', $oldassignment->id, array('iteminstance'=>$newassignment->get_instance()->id));
+                // Reassociate grade_items from the new assign instance to the old assignment instance.
+                $params = array('assignment', $oldassignment->id, 'assign', $newassignment->get_instance()->id);
+                $sql = 'UPDATE {grade_items} SET itemmodule = ?, iteminstance = ? WHERE itemmodule = ? AND iteminstance = ?';
+                $DB->execute($sql, $params);
             }
             // roll back the completion changes
             if ($completiondone) {
                 $DB->set_field('course_modules_completion', 'coursemoduleid', $oldcoursemodule->id, array('coursemoduleid'=>$newcoursemodule->id));
-                $DB->set_field('course_completion_criteria', 'module', 'assignment', array('moduleinstance'=>$newcoursemodule->id));
-                $DB->set_field('course_completion_criteria', 'moduleinstance', $oldcoursemodule->id, array('moduleinstance'=>$newcoursemodule->id));
+                $allcriteria = $DB->get_records('course_completion_criteria', array('moduleinstance'=>$newcoursemodule->id));
+                foreach ($allcriteria as $criteria) {
+                    $criteria->module = 'assignment';
+                    $criteria->moduleinstance = $oldcoursemodule->id;
+                    $DB->update_record('course_completion_criteria', $criteria);
+                }
             }
+            // Roll back the log changes
+            $logparams = array('cmid' => $newcoursemodule->id, 'course' => $newcoursemodule->course);
+            $DB->set_field('log', 'module', 'assignment', $logparams);
+            $DB->set_field('log', 'cmid', $oldcoursemodule->id, $logparams);
             // roll back the advanced grading update
             if ($gradingarea) {
                 foreach ($gradeidmap as $newgradeid => $oldsubmissionid) {
@@ -304,12 +341,7 @@ class assign_upgrade_manager {
             return false;
         }
 
-        $mod = new stdClass();
-        $mod->course = $newcm->course;
-        $mod->section = $section->section;
-        $mod->coursemodule = $newcm->id;
-        $mod->id = $newcm->id;
-        $newcm->section = add_mod_to_section($mod, $cm);
+        $newcm->section = course_add_cm_to_section($newcm->course, $newcm->id, $section->section);
 
         // make sure visibility is set correctly (in particular in calendar)
         // note: allow them to set it even without moodle/course:activityvisibility

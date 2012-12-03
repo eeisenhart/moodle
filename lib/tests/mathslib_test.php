@@ -142,6 +142,9 @@ class mathsslib_testcase extends basic_testcase {
     }
 
     public function test_rounding_function() {
+        // Rounding to the default number of decimal places
+        // The default == 0
+
         $formula = new calc_formula('=round(2.5)');
         $this->assertEquals($formula->evaluate(), 3);
 
@@ -196,6 +199,19 @@ class mathsslib_testcase extends basic_testcase {
         $formula = new calc_formula('=floor(-2.5)');
         $this->assertEquals($formula->evaluate(), -3);
 
+        // Rounding to an explicit number of decimal places
+
+        $formula = new calc_formula('=round(2.5, 1)');
+        $this->assertEquals($formula->evaluate(), 2.5);
+
+        $formula = new calc_formula('=round(2.5, 0)');
+        $this->assertEquals($formula->evaluate(), 3);
+
+        $formula = new calc_formula('=round(1.2345, 2)');
+        $this->assertEquals($formula->evaluate(), 1.23);
+
+        $formula = new calc_formula('=round(123.456, -1)');
+        $this->assertEquals($formula->evaluate(), 120);
     }
 
     public function test_scientific_notation() {
@@ -214,5 +230,11 @@ class mathsslib_testcase extends basic_testcase {
         $formula = new calc_formula('=10e10^2');
         $this->assertEquals($formula->evaluate(), 1e22, '', 1e22*1e-15);
 
+    }
+
+    public function test_rand_float() {
+        $formula = new calc_formula('=rand_float()');
+        $result = $formula->evaluate();
+        $this->assertTrue(is_float($result));
     }
 }

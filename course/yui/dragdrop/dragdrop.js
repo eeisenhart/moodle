@@ -41,6 +41,26 @@ YUI.add('moodle-course-dragdrop', function(Y) {
             if (this.sectionlistselector) {
                 this.sectionlistselector = '.'+CSS.COURSECONTENT+' '+this.sectionlistselector;
                 this.setup_for_section(this.sectionlistselector);
+
+                // Make each li element in the lists of sections draggable
+                var nodeselector = this.sectionlistselector.slice(CSS.COURSECONTENT.length+2);
+                var del = new Y.DD.Delegate({
+                    container: '.'+CSS.COURSECONTENT,
+                    nodes: nodeselector,
+                    target: true,
+                    handles: ['.'+CSS.LEFT],
+                    dragConfig: {groups: this.groups}
+                });
+                del.dd.plug(Y.Plugin.DDProxy, {
+                    // Don't move the node at the end of the drag
+                    moveOnEnd: false
+                });
+                del.dd.plug(Y.Plugin.DDConstrained, {
+                    // Keep it inside the .course-content
+                    constrain: '#'+CSS.PAGECONTENT,
+                    stickY: true
+                });
+                del.dd.plug(Y.Plugin.DDWinScroll);
             }
         },
 
@@ -67,8 +87,7 @@ YUI.add('moodle-course-dragdrop', function(Y) {
 
                     if ((movedown || moveup) && cssleft) {
                         cssleft.setStyle('cursor', 'move');
-                        cssleft.appendChild(Y.Node.create('<br />'));
-                        cssleft.appendChild(this.get_drag_handle(title, CSS.SECTIONHANDLE));
+                        cssleft.appendChild(this.get_drag_handle(title, CSS.SECTIONHANDLE, 'icon', true));
 
                         if (moveup) {
                             moveup.remove();
@@ -76,22 +95,6 @@ YUI.add('moodle-course-dragdrop', function(Y) {
                         if (movedown) {
                             movedown.remove();
                         }
-
-                        // Make each li element in the lists of sections draggable
-                        var dd = new Y.DD.Drag({
-                            node: sectionnode,
-                            // Make each li a Drop target too
-                            groups: this.groups,
-                            target: true,
-                            handles: ['.'+CSS.LEFT]
-                        }).plug(Y.Plugin.DDProxy, {
-                            // Don't move the node at the end of the drag
-                            moveOnEnd: false
-                        }).plug(Y.Plugin.DDConstrained, {
-                            // Keep it inside the .course-content
-                            constrain: '#'+CSS.PAGECONTENT,
-                            stickY: true
-                        });
                     }
                 }
             }, this);
@@ -119,6 +122,13 @@ YUI.add('moodle-course-dragdrop', function(Y) {
             drag.get('dragNode').addClass(CSS.COURSECONTENT);
         },
 
+        drag_dropmiss : function(e) {
+            // Missed the target, but we assume the user intended to drop it
+            // on the last last ghost node location, e.drag and e.drop should be
+            // prepared by global_drag_dropmiss parent so simulate drop_hit(e).
+            this.drop_hit(e);
+        },
+
         drop_hit : function(e) {
             var drag = e.drag;
             // Get a reference to our drag node
@@ -128,12 +138,10 @@ YUI.add('moodle-course-dragdrop', function(Y) {
             var dragnodeid = Number(this.get_section_id(dragnode));
             var dropnodeid = Number(this.get_section_id(dropnode));
 
-            var targetoffset = 0;
             var loopstart = dragnodeid;
             var loopend = dropnodeid;
 
             if (this.goingup) {
-                targetoffset = 1;
                 loopstart = dropnodeid;
                 loopend = dragnodeid;
             }
@@ -159,7 +167,7 @@ YUI.add('moodle-course-dragdrop', function(Y) {
             params['class'] = 'section';
             params.field = 'move';
             params.id = dragnodeid;
-            params.value = dropnodeid - targetoffset;
+            params.value = dropnodeid;
 
             // Do AJAX request
             var uri = M.cfg.wwwroot + this.get('ajaxurl');
@@ -172,9 +180,16 @@ YUI.add('moodle-course-dragdrop', function(Y) {
                         lightbox.show();
                     },
                     success: function(tid, response) {
-                        window.setTimeout(function(e) {
-                            lightbox.hide();
-                        }, 250);
+                        // Update section titles, we can't simply swap them as
+                        // they might have custom title
+                        try {
+                            var responsetext = Y.JSON.parse(response.responseText);
+                            if (responsetext.error) {
+                                new M.core.ajaxException(responsetext);
+                            }
+                            M.course.format.process_sections(Y, sectionlist, responsetext, loopstart, loopend);
+                        } catch (e) {}
+
                         // Classic bubble sort algorithm is applied to the section
                         // nodes between original drag node location and the new one.
                         do {
@@ -193,6 +208,11 @@ YUI.add('moodle-course-dragdrop', function(Y) {
                             }
                             loopend = loopend - 1;
                         } while (swapped);
+
+                        // Finally, hide the lightbox
+                        window.setTimeout(function(e) {
+                            lightbox.hide();
+                        }, 250);
                     },
                     failure: function(tid, response) {
                         this.ajax_failure(response);
@@ -227,12 +247,34 @@ YUI.add('moodle-course-dragdrop', function(Y) {
             this.groups = ['resource'];
             this.samenodeclass = CSS.ACTIVITY;
             this.parentnodeclass = CSS.SECTION;
+            this.resourcedraghandle = this.get_drag_handle(M.str.moodle.move, CSS.EDITINGMOVE, CSS.ICONCLASS);
 
             // Go through all sections
             var sectionlistselector = M.course.format.get_section_selector(Y);
             if (sectionlistselector) {
                 sectionlistselector = '.'+CSS.COURSECONTENT+' '+sectionlistselector;
                 this.setup_for_section(sectionlistselector);
+
+                // Initialise drag & drop for all resources/activities
+                var nodeselector = sectionlistselector.slice(CSS.COURSECONTENT.length+2)+' li.'+CSS.ACTIVITY;
+                var del = new Y.DD.Delegate({
+                    container: '.'+CSS.COURSECONTENT,
+                    nodes: nodeselector,
+                    target: true,
+                    handles: ['.' + CSS.EDITINGMOVE],
+                    dragConfig: {groups: this.groups}
+                });
+                del.dd.plug(Y.Plugin.DDProxy, {
+                    // Don't move the node at the end of the drag
+                    moveOnEnd: false,
+                    cloneNode: true
+                });
+                del.dd.plug(Y.Plugin.DDConstrained, {
+                    // Keep it inside the .course-content
+                    constrain: '#'+CSS.PAGECONTENT
+                });
+                del.dd.plug(Y.Plugin.DDWinScroll);
+
                 M.course.coursebase.register_module(this);
                 M.course.dragres = this;
             }
@@ -253,14 +295,14 @@ YUI.add('moodle-course-dragdrop', function(Y) {
                     resources.addClass(CSS.SECTION);
                     sectionnode.one('.'+CSS.CONTENT+' div.'+CSS.SUMMARY).insert(resources, 'after');
                 }
-
-                // Define each ul as droptarget, so that item could be moved to empty list
+                // Define empty ul as droptarget, so that item could be moved to empty list
                 var tar = new Y.DD.Drop({
                     node: resources,
                     groups: this.groups,
                     padding: '20 0 20 0'
                 });
-                // Go through each li element and make them draggable
+
+                // Initialise each resource/activity in this section
                 this.setup_for_resource('#'+sectionnode.get('id')+' li.'+CSS.ACTIVITY);
             }, this);
         },
@@ -275,21 +317,7 @@ YUI.add('moodle-course-dragdrop', function(Y) {
                 // Replace move icons
                 var move = resourcesnode.one('a.'+CSS.EDITINGMOVE);
                 if (move) {
-                    move.replace(this.get_drag_handle(M.str.moodle.move, CSS.EDITINGMOVE, CSS.ICONCLASS));
-                    // Make each li element in the lists of sections draggable
-                    var dd = new Y.DD.Drag({
-                        node: resourcesnode,
-                        groups: this.groups,
-                        // Make each li a Drop target too
-                        target: true,
-                        handles: ['.' + CSS.EDITINGMOVE]
-                    }).plug(Y.Plugin.DDProxy, {
-                        // Don't move the node at the end of the drag
-                        moveOnEnd: false
-                    }).plug(Y.Plugin.DDConstrained, {
-                        // Keep it inside the .course-content
-                        constrain: '#'+CSS.PAGECONTENT
-                    });
+                    move.replace(this.resourcedraghandle.cloneNode(true));
                 }
             }, this);
         },
@@ -307,6 +335,13 @@ YUI.add('moodle-course-dragdrop', function(Y) {
             var drag = e.target;
             drag.get('dragNode').setContent(drag.get('node').get('innerHTML'));
             drag.get('dragNode').all('img.iconsmall').setStyle('vertical-align', 'baseline');
+        },
+
+        drag_dropmiss : function(e) {
+            // Missed the target, but we assume the user intended to drop it
+            // on the last last ghost node location, e.drag and e.drop should be
+            // prepared by global_drag_dropmiss parent so simulate drop_hit(e).
+            this.drop_hit(e);
         },
 
         drop_hit : function(e) {
@@ -387,4 +422,4 @@ YUI.add('moodle-course-dragdrop', function(Y) {
     M.course.init_section_dragdrop = function(params) {
         new DRAGSECTION(params);
     }
-}, '@VERSION@', {requires:['base', 'node', 'io', 'dom', 'dd', 'moodle-core-dragdrop', 'moodle-enrol-notification', 'moodle-course-coursebase']});
+}, '@VERSION@', {requires:['base', 'node', 'io', 'dom', 'dd', 'dd-scroll', 'moodle-core-dragdrop', 'moodle-core-notification', 'moodle-course-coursebase']});

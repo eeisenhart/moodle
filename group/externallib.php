@@ -52,7 +52,8 @@ class core_group_external extends external_api {
                             'courseid' => new external_value(PARAM_INT, 'id of course'),
                             'name' => new external_value(PARAM_TEXT, 'multilang compatible name, course unique'),
                             'description' => new external_value(PARAM_RAW, 'group description text'),
-                            'enrolmentkey' => new external_value(PARAM_RAW, 'group enrol secret phrase'),
+                            'descriptionformat' => new external_format_value('description', VALUE_DEFAULT),
+                            'enrolmentkey' => new external_value(PARAM_RAW, 'group enrol secret phrase', VALUE_OPTIONAL),
                         )
                     ), 'List of group object. A group has a courseid, a name, a description and an enrolment key.'
                 )
@@ -88,20 +89,25 @@ class core_group_external extends external_api {
             }
 
             // now security checks
-            $context = get_context_instance(CONTEXT_COURSE, $group->courseid);
+            $context = context_course::instance($group->courseid, IGNORE_MISSING);
             try {
                 self::validate_context($context);
             } catch (Exception $e) {
                 $exceptionparam = new stdClass();
                 $exceptionparam->message = $e->getMessage();
                 $exceptionparam->courseid = $group->courseid;
-                throw new moodle_exception(
-                        get_string('errorcoursecontextnotvalid' , 'webservice', $exceptionparam));
+                throw new moodle_exception('errorcoursecontextnotvalid' , 'webservice', '', $exceptionparam);
             }
             require_capability('moodle/course:managegroups', $context);
 
+            // Validate format.
+            $group->descriptionformat = external_validate_format($group->descriptionformat);
+
             // finally create the group
             $group->id = groups_create_group($group, false);
+            if (!isset($group->enrolmentkey)) {
+                $group->enrolmentkey = '';
+            }
             $groups[] = (array)$group;
         }
 
@@ -124,6 +130,7 @@ class core_group_external extends external_api {
                     'courseid' => new external_value(PARAM_INT, 'id of course'),
                     'name' => new external_value(PARAM_TEXT, 'multilang compatible name, course unique'),
                     'description' => new external_value(PARAM_RAW, 'group description text'),
+                    'descriptionformat' => new external_format_value('description'),
                     'enrolmentkey' => new external_value(PARAM_RAW, 'group enrol secret phrase'),
                 )
             ), 'List of group object. A group has an id, a courseid, a name, a description and an enrolment key.'
@@ -158,20 +165,23 @@ class core_group_external extends external_api {
         $groups = array();
         foreach ($params['groupids'] as $groupid) {
             // validate params
-            $group = groups_get_group($groupid, 'id, courseid, name, description, enrolmentkey', MUST_EXIST);
+            $group = groups_get_group($groupid, 'id, courseid, name, description, descriptionformat, enrolmentkey', MUST_EXIST);
 
             // now security checks
-            $context = get_context_instance(CONTEXT_COURSE, $group->courseid);
+            $context = context_course::instance($group->courseid, IGNORE_MISSING);
             try {
                 self::validate_context($context);
             } catch (Exception $e) {
                 $exceptionparam = new stdClass();
                 $exceptionparam->message = $e->getMessage();
                 $exceptionparam->courseid = $group->courseid;
-                throw new moodle_exception(
-                        get_string('errorcoursecontextnotvalid' , 'webservice', $exceptionparam));
+                throw new moodle_exception('errorcoursecontextnotvalid' , 'webservice', '', $exceptionparam);
             }
             require_capability('moodle/course:managegroups', $context);
+
+            list($group->description, $group->descriptionformat) =
+                external_format_text($group->description, $group->descriptionformat,
+                        $context->id, 'group', 'description', $group->id);
 
             $groups[] = (array)$group;
         }
@@ -193,6 +203,7 @@ class core_group_external extends external_api {
                     'courseid' => new external_value(PARAM_INT, 'id of course'),
                     'name' => new external_value(PARAM_TEXT, 'multilang compatible name, course unique'),
                     'description' => new external_value(PARAM_RAW, 'group description text'),
+                    'descriptionformat' => new external_format_value('description'),
                     'enrolmentkey' => new external_value(PARAM_RAW, 'group enrol secret phrase'),
                 )
             )
@@ -224,22 +235,25 @@ class core_group_external extends external_api {
         $params = self::validate_parameters(self::get_course_groups_parameters(), array('courseid'=>$courseid));
 
         // now security checks
-        $context = get_context_instance(CONTEXT_COURSE, $params['courseid']);
+        $context = context_course::instance($params['courseid'], IGNORE_MISSING);
         try {
             self::validate_context($context);
         } catch (Exception $e) {
                 $exceptionparam = new stdClass();
                 $exceptionparam->message = $e->getMessage();
                 $exceptionparam->courseid = $params['courseid'];
-                throw new moodle_exception(
-                        get_string('errorcoursecontextnotvalid' , 'webservice', $exceptionparam));
+                throw new moodle_exception('errorcoursecontextnotvalid' , 'webservice', '', $exceptionparam);
         }
         require_capability('moodle/course:managegroups', $context);
 
-        $gs = groups_get_all_groups($params['courseid'], 0, 0, 'g.id, g.courseid, g.name, g.description, g.enrolmentkey');
+        $gs = groups_get_all_groups($params['courseid'], 0, 0,
+            'g.id, g.courseid, g.name, g.description, g.descriptionformat, g.enrolmentkey');
 
         $groups = array();
         foreach ($gs as $group) {
+            list($group->description, $group->descriptionformat) =
+                external_format_text($group->description, $group->descriptionformat,
+                        $context->id, 'group', 'description', $group->id);
             $groups[] = (array)$group;
         }
 
@@ -260,6 +274,7 @@ class core_group_external extends external_api {
                     'courseid' => new external_value(PARAM_INT, 'id of course'),
                     'name' => new external_value(PARAM_TEXT, 'multilang compatible name, course unique'),
                     'description' => new external_value(PARAM_RAW, 'group description text'),
+                    'descriptionformat' => new external_format_value('description'),
                     'enrolmentkey' => new external_value(PARAM_RAW, 'group enrol secret phrase'),
                 )
             )
@@ -296,22 +311,21 @@ class core_group_external extends external_api {
 
         foreach ($params['groupids'] as $groupid) {
             // validate params
-            $groupid = validate_param($groupid, PARAM_INTEGER);
+            $groupid = validate_param($groupid, PARAM_INT);
             if (!$group = groups_get_group($groupid, 'id, courseid', IGNORE_MISSING)) {
                 // silently ignore attempts to delete nonexisting groups
                 continue;
             }
 
             // now security checks
-            $context = get_context_instance(CONTEXT_COURSE, $group->courseid);
+            $context = context_course::instance($group->courseid, IGNORE_MISSING);
             try {
                 self::validate_context($context);
             } catch (Exception $e) {
                 $exceptionparam = new stdClass();
                 $exceptionparam->message = $e->getMessage();
                 $exceptionparam->courseid = $group->courseid;
-                throw new moodle_exception(
-                        get_string('errorcoursecontextnotvalid' , 'webservice', $exceptionparam));
+                throw new moodle_exception('errorcoursecontextnotvalid' , 'webservice', '', $exceptionparam);
             }
             require_capability('moodle/course:managegroups', $context);
 
@@ -362,15 +376,14 @@ class core_group_external extends external_api {
             // validate params
             $group = groups_get_group($groupid, 'id, courseid, name, enrolmentkey', MUST_EXIST);
             // now security checks
-            $context = get_context_instance(CONTEXT_COURSE, $group->courseid);
+            $context = context_course::instance($group->courseid, IGNORE_MISSING);
             try {
                 self::validate_context($context);
             } catch (Exception $e) {
                 $exceptionparam = new stdClass();
                 $exceptionparam->message = $e->getMessage();
                 $exceptionparam->courseid = $group->courseid;
-                throw new moodle_exception(
-                        get_string('errorcoursecontextnotvalid' , 'webservice', $exceptionparam));
+                throw new moodle_exception('errorcoursecontextnotvalid' , 'webservice', '', $exceptionparam);
             }
             require_capability('moodle/course:managegroups', $context);
 
@@ -443,15 +456,14 @@ class core_group_external extends external_api {
             $user = $DB->get_record('user', array('id'=>$userid, 'deleted'=>0, 'mnethostid'=>$CFG->mnet_localhost_id), '*', MUST_EXIST);
 
             // now security checks
-            $context = get_context_instance(CONTEXT_COURSE, $group->courseid);
+            $context = context_course::instance($group->courseid, IGNORE_MISSING);
             try {
                 self::validate_context($context);
             } catch (Exception $e) {
                 $exceptionparam = new stdClass();
                 $exceptionparam->message = $e->getMessage();
                 $exceptionparam->courseid = $group->courseid;
-                throw new moodle_exception(
-                        get_string('errorcoursecontextnotvalid' , 'webservice', $exceptionparam));
+                throw new moodle_exception('errorcoursecontextnotvalid' , 'webservice', '', $exceptionparam);
             }
             require_capability('moodle/course:managegroups', $context);
 
@@ -522,18 +534,20 @@ class core_group_external extends external_api {
             $user = $DB->get_record('user', array('id'=>$userid, 'deleted'=>0, 'mnethostid'=>$CFG->mnet_localhost_id), '*', MUST_EXIST);
 
             // now security checks
-            $context = get_context_instance(CONTEXT_COURSE, $group->courseid);
+            $context = context_course::instance($group->courseid, IGNORE_MISSING);
             try {
                 self::validate_context($context);
             } catch (Exception $e) {
                 $exceptionparam = new stdClass();
                 $exceptionparam->message = $e->getMessage();
                 $exceptionparam->courseid = $group->courseid;
-                throw new moodle_exception(
-                        get_string('errorcoursecontextnotvalid' , 'webservice', $exceptionparam));
+                throw new moodle_exception('errorcoursecontextnotvalid' , 'webservice', '', $exceptionparam);
             }
             require_capability('moodle/course:managegroups', $context);
 
+            if (!groups_remove_member_allowed($group, $user)) {
+                throw new moodle_exception('errorremovenotpermitted', 'group', '', fullname($user));
+            }
             groups_remove_member($group, $user);
         }
 
@@ -564,7 +578,8 @@ class core_group_external extends external_api {
                         array(
                             'courseid' => new external_value(PARAM_INT, 'id of course'),
                             'name' => new external_value(PARAM_TEXT, 'multilang compatible name, course unique'),
-                            'description' => new external_value(PARAM_RAW, 'grouping description text')
+                            'description' => new external_value(PARAM_RAW, 'grouping description text'),
+                            'descriptionformat' => new external_format_value('descripiton', VALUE_DEFAULT)
                         )
                     ), 'List of grouping object. A grouping has a courseid, a name and a description.'
                 )
@@ -611,8 +626,7 @@ class core_group_external extends external_api {
             }
             require_capability('moodle/course:managegroups', $context);
 
-            // We must force allways FORMAT_HTML.
-            $grouping->descriptionformat = FORMAT_HTML;
+            $grouping->descriptionformat = external_validate_format($grouping->descriptionformat);
 
             // Finally create the grouping.
             $grouping->id = groups_create_grouping($grouping);
@@ -637,7 +651,8 @@ class core_group_external extends external_api {
                     'id' => new external_value(PARAM_INT, 'grouping record id'),
                     'courseid' => new external_value(PARAM_INT, 'id of course'),
                     'name' => new external_value(PARAM_TEXT, 'multilang compatible name, course unique'),
-                    'description' => new external_value(PARAM_CLEANHTML, 'grouping description text')
+                    'description' => new external_value(PARAM_RAW, 'grouping description text'),
+                    'descriptionformat' => new external_format_value('description')
                 )
             ), 'List of grouping object. A grouping has an id, a courseid, a name and a description.'
         );
@@ -657,7 +672,8 @@ class core_group_external extends external_api {
                         array(
                             'id' => new external_value(PARAM_INT, 'id of grouping'),
                             'name' => new external_value(PARAM_TEXT, 'multilang compatible name, course unique'),
-                            'description' => new external_value(PARAM_RAW, 'grouping description text')
+                            'description' => new external_value(PARAM_RAW, 'grouping description text'),
+                            'descriptionformat' => new external_format_value('description', VALUE_DEFAULT)
                         )
                     ), 'List of grouping object. A grouping has a courseid, a name and a description.'
                 )
@@ -712,7 +728,7 @@ class core_group_external extends external_api {
             require_capability('moodle/course:managegroups', $context);
 
             // We must force allways FORMAT_HTML.
-            $grouping->descriptionformat = FORMAT_HTML;
+            $grouping->descriptionformat = external_validate_format($grouping->descriptionformat);
 
             // Finally update the grouping.
             groups_update_grouping($grouping);
@@ -779,12 +795,9 @@ class core_group_external extends external_api {
             }
             require_capability('moodle/course:managegroups', $context);
 
-            $grouping->description = file_rewrite_pluginfile_urls($grouping->description, 'webservice/pluginfile.php', $context->id, 'grouping', 'description', $grouping->id);
-
-            $options = new stdClass;
-            $options->noclean = true;
-            $options->para = false;
-            $grouping->description = format_text($grouping->description, FORMAT_HTML, $options);
+            list($grouping->description, $grouping->descriptionformat) =
+                external_format_text($grouping->description, $grouping->descriptionformat,
+                        $context->id, 'grouping', 'description', $grouping->id);
 
             $groupings[] = (array)$grouping;
         }
@@ -805,7 +818,8 @@ class core_group_external extends external_api {
                     'id' => new external_value(PARAM_INT, 'grouping record id'),
                     'courseid' => new external_value(PARAM_INT, 'id of course'),
                     'name' => new external_value(PARAM_TEXT, 'multilang compatible name, course unique'),
-                    'description' => new external_value(PARAM_CLEANHTML, 'grouping description text')
+                    'description' => new external_value(PARAM_RAW, 'grouping description text'),
+                    'descriptionformat' => new external_format_value('description')
                 )
             )
         );
@@ -856,13 +870,9 @@ class core_group_external extends external_api {
 
         $groupings = array();
         foreach ($gs as $grouping) {
-            $grouping->description = file_rewrite_pluginfile_urls($grouping->description, 'webservice/pluginfile.php', $context->id, 'grouping', 'description', $grouping->id);
-
-            $options = new stdClass;
-            $options->noclean = true;
-            $options->para = false;
-            $grouping->description = format_text($grouping->description, FORMAT_HTML, $options);
-
+            list($grouping->description, $grouping->descriptionformat) =
+                external_format_text($grouping->description, $grouping->descriptionformat,
+                        $context->id, 'grouping', 'description', $grouping->id);
             $groupings[] = (array)$grouping;
         }
 
@@ -882,7 +892,8 @@ class core_group_external extends external_api {
                     'id' => new external_value(PARAM_INT, 'grouping record id'),
                     'courseid' => new external_value(PARAM_INT, 'id of course'),
                     'name' => new external_value(PARAM_TEXT, 'multilang compatible name, course unique'),
-                    'description' => new external_value(PARAM_CLEANHTML, 'grouping description text')
+                    'description' => new external_value(PARAM_RAW, 'grouping description text'),
+                    'descriptionformat' => new external_format_value('description')
                 )
             )
         );

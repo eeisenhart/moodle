@@ -174,9 +174,8 @@ function cron_run() {
 
     // Send login failures notification - brute force protection in moodle is weak,
     // we should at least send notices early in each cron execution
-    if (!empty($CFG->notifyloginfailures)) {
-        notify_login_failures();
-        mtrace(' Notified login failured');
+    if (notify_login_failures()) {
+        mtrace(' Notified login failures');
     }
 
 
@@ -209,11 +208,11 @@ function cron_run() {
     if ($DB->count_records('user_preferences', array('name'=>'create_password', 'value'=>'1'))) {
         mtrace('Creating passwords for new users...');
         $newusers = $DB->get_recordset_sql("SELECT u.id as id, u.email, u.firstname,
-                                                 u.lastname, u.username,
+                                                 u.lastname, u.username, u.lang,
                                                  p.id as prefid
                                             FROM {user} u
                                             JOIN {user_preferences} p ON u.id=p.userid
-                                           WHERE p.name='create_password' AND p.value='1' AND u.email !='' AND u.suspended = 0 AND u.auth != 'nologin'");
+                                           WHERE p.name='create_password' AND p.value='1' AND u.email !='' AND u.suspended = 0 AND u.auth != 'nologin' AND u.deleted = 0");
 
         // note: we can not send emails to suspended accounts
         foreach ($newusers as $newuser) {
@@ -319,7 +318,7 @@ function cron_run() {
     if ($CFG->enablecompletion) {
         // Completion cron
         mtrace('Starting the completion cron...');
-        require_once($CFG->libdir . '/completion/cron.php');
+        require_once($CFG->dirroot.'/completion/cron.php');
         completion_cron();
         mtrace('done');
     }
@@ -351,9 +350,12 @@ function cron_run() {
     cron_execute_plugin_type('gradereport');
     mtrace('Finished gradebook plugins');
 
+    // run calendar cron
+    require_once "{$CFG->dirroot}/calendar/lib.php";
+    calendar_cron();
 
     // Run external blog cron if needed
-    if ($CFG->useexternalblogs) {
+    if (!empty($CFG->enableblogs) && $CFG->useexternalblogs) {
         require_once($CFG->dirroot . '/blog/lib.php');
         mtrace("Fetching external blog entries...", '');
         $sql = "timefetched < ? OR timefetched = 0";
@@ -365,7 +367,7 @@ function cron_run() {
         mtrace('done.');
     }
     // Run blog associations cleanup
-    if ($CFG->useblogassociations) {
+    if (!empty($CFG->enableblogs) && $CFG->useblogassociations) {
         require_once($CFG->dirroot . '/blog/lib.php');
         // delete entries whose contextids no longer exists
         mtrace("Deleting blog associations linked to non-existent contexts...", '');
@@ -374,9 +376,16 @@ function cron_run() {
     }
 
 
+    // Run question bank clean-up.
+    mtrace("Starting the question bank cron...", '');
+    require_once($CFG->libdir . '/questionlib.php');
+    question_bank::cron();
+    mtrace('done.');
+
+
     //Run registration updated cron
     mtrace(get_string('siteupdatesstart', 'hub'));
-    require_once($CFG->dirroot . '/admin/registration/lib.php');
+    require_once($CFG->dirroot . '/' . $CFG->admin . '/registration/lib.php');
     $registrationmanager = new registration_manager();
     $registrationmanager->cron();
     mtrace(get_string('siteupdatesend', 'hub'));
@@ -459,10 +468,6 @@ function cron_run() {
     // cleanup file trash - not very important
     $fs = get_file_storage();
     $fs->cron();
-
-    mtrace("Clean up cached external files");
-    // 1 week
-    cache_file::cleanup(array(), 60 * 60 * 24 * 7);
 
     mtrace("Cron script completed correctly");
 
@@ -603,14 +608,25 @@ function cron_bc_hack_plugin_functions($plugintype, $plugins) {
  * Note that this function must be only executed from the cron script
  * It uses the cache_flags system to store temporary records, deleting them
  * by name before finishing
+ *
+ * @return bool True if executed, false if not
  */
 function notify_login_failures() {
     global $CFG, $DB, $OUTPUT;
+
+    if (empty($CFG->notifyloginfailures)) {
+        return false;
+    }
 
     $recip = get_users_from_config($CFG->notifyloginfailures, 'moodle/site:config');
 
     if (empty($CFG->lastnotifyfailure)) {
         $CFG->lastnotifyfailure=0;
+    }
+
+    // If it has been less than an hour, or if there are no recipients, don't execute.
+    if (((time() - HOURSECS) < $CFG->lastnotifyfailure) || !is_array($recip) || count($recip) <= 0) {
+        return false;
     }
 
     // we need to deal with the threshold stuff first.
@@ -685,10 +701,8 @@ function notify_login_failures() {
     }
     $rs->close();
 
-    // If we haven't run in the last hour and
-    // we have something useful to report and we
-    // are actually supposed to be reporting to somebody
-    if ((time() - HOURSECS) > $CFG->lastnotifyfailure && $count > 0 && is_array($recip) && count($recip) > 0) {
+    // If we have something useful to report.
+    if ($count > 0) {
         $site = get_site();
         $subject = get_string('notifyloginfailuressubject', '', format_string($site->fullname));
         // Calculate the complete body of notification (start + messages + end)
@@ -701,13 +715,15 @@ function notify_login_failures() {
         mtrace('Emailing admins about '. $count .' failed login attempts');
         foreach ($recip as $admin) {
             //emailing the admins directly rather than putting these through the messaging system
-            email_to_user($admin,get_admin(), $subject, $body);
+            email_to_user($admin, generate_email_supportuser(), $subject, $body);
         }
-
-        // Update lastnotifyfailure with current time
-        set_config('lastnotifyfailure', time());
     }
+
+    // Update lastnotifyfailure with current time
+    set_config('lastnotifyfailure', time());
 
     // Finally, delete all the temp records we have created in cache_flags
     $DB->delete_records_select('cache_flags', "flagtype IN ('login_failure_by_ip', 'login_failure_by_info')");
+
+    return true;
 }

@@ -1,5 +1,5 @@
 <?php
-// This file is part of Book module for Moodle - http://moodle.org/
+// This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -57,9 +57,6 @@ if (!$books = get_all_instances_in_course('book', $course)) {
 }
 
 $usesections = course_format_uses_sections($course->format);
-if ($usesections) {
-    $sections = get_all_sections($course->id);
-}
 
 $table = new html_table();
 $table->attributes['class'] = 'generaltable mod_index';
@@ -80,7 +77,7 @@ foreach ($books as $book) {
         $printsection = '';
         if ($book->section !== $currentsection) {
             if ($book->section) {
-                $printsection = get_section_name($course, $sections[$book->section]);
+                $printsection = get_section_name($course, $book->section);
             }
             if ($currentsection !== '') {
                 $table->data[] = 'hr';
@@ -88,14 +85,14 @@ foreach ($books as $book) {
             $currentsection = $book->section;
         }
     } else {
-        $printsection = '<span class="smallinfo">'.userdate($book->timemodified)."</span>";
+        $printsection = html_writer::tag('span', userdate($book->timemodified), array('class' => 'smallinfo'));
     }
 
-    $class = $book->visible ? '' : 'class="dimmed"'; // hidden modules are dimmed
+    $class = $book->visible ? null : array('class' => 'dimmed'); // hidden modules are dimmed
 
     $table->data[] = array (
         $printsection,
-        "<a $class href=\"view.php?id=$cm->id\">".format_string($book->name)."</a>",
+        html_writer::link(new moodle_url('view.php', array('id' => $cm->id)), format_string($book->name), $class),
         format_module_intro('book', $book, $cm->id));
 }
 

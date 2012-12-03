@@ -94,6 +94,7 @@ class mod_quiz_mod_form extends moodleform_mod {
         // What to do with overdue attempts.
         $mform->addElement('select', 'overduehandling', get_string('overduehandling', 'quiz'),
                 quiz_get_overdue_handling_options());
+        $mform->addHelpButton('overduehandling', 'overduehandling', 'quiz');
         $mform->setAdvanced('overduehandling', $quizconfig->overduehandling_adv);
         $mform->setDefault('overduehandling', $quizconfig->overduehandling);
         // TODO Formslib does OR logic on disableif, and we need AND logic here.
@@ -114,7 +115,7 @@ class mod_quiz_mod_form extends moodleform_mod {
 
         $mform->removeElement('grade');
         $mform->addElement('hidden', 'grade', $quizconfig->maximumgrade);
-        $mform->setType('grade', PARAM_NUMBER);
+        $mform->setType('grade', PARAM_FLOAT);
 
         // Number of attempts.
         $attemptoptions = array('0' => get_string('unlimited'));
@@ -164,9 +165,16 @@ class mod_quiz_mod_form extends moodleform_mod {
             $pagegroup[] = $mform->createElement('checkbox', 'repaginatenow', '',
                     get_string('repaginatenow', 'quiz'), array('id' => 'id_repaginatenow'));
             $mform->disabledIf('repaginatenow', 'shufflequestions', 'eq', 1);
-            $PAGE->requires->yui2_lib('event');
-            $PAGE->requires->js('/mod/quiz/edit.js');
-            $PAGE->requires->js_init_call('quiz_settings_init');
+
+            $PAGE->requires->js('/question/qengine.js');
+            $module = array(
+                'name'      => 'mod_quiz_edit',
+                'fullpath'  => '/mod/quiz/edit.js',
+                'requires'  => array('yui2-dom', 'yui2-event', 'yui2-container'),
+                'strings'   => array(),
+                'async'     => false,
+            );
+            $PAGE->requires->js_init_call('quiz_settings_init', null, false, $module);
         }
 
         $mform->addGroup($pagegroup, 'questionsperpagegrp',
@@ -500,6 +508,14 @@ class mod_quiz_mod_form extends moodleform_mod {
         if ($data['timeopen'] != 0 && $data['timeclose'] != 0 &&
                 $data['timeclose'] < $data['timeopen']) {
             $errors['timeclose'] = get_string('closebeforeopen', 'quiz');
+        }
+
+        // Check that the grace period is not too short.
+        if ($data['overduehandling'] == 'graceperiod') {
+            $graceperiodmin = get_config('quiz', 'graceperiodmin');
+            if ($data['graceperiod'] <= $graceperiodmin) {
+                $errors['graceperiod'] = get_string('graceperiodtoosmall', 'quiz', format_time($graceperiodmin));
+            }
         }
 
         // Check the boundary value is a number or a percentage, and in range.

@@ -1,5 +1,5 @@
 <?php
-// This file is part of Book module for Moodle - http://moodle.org/
+// This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,5 +25,6 @@
 defined('MOODLE_INTERNAL') || die();
 
 $logs = array(
-    array('module'=>'book', 'action'=>'print', 'mtable'=>'book', 'field'=>'name')
+    array('module' => 'book', 'action' => 'print', 'mtable' => 'book', 'field' => 'name'),
+    array('module' => 'book', 'action' => 'print chapter', 'mtable' => 'book_chapters', 'field' => 'title')
 );

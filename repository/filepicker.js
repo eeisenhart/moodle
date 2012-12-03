@@ -16,6 +16,7 @@
  * this.viewmode, store current view mode
  * this.pathbar, reference to the Node with path bar
  * this.pathnode, a Node element representing one folder in a path bar (not attached anywhere, just used for template)
+ * this.currentpath, the current path in the repository (or last requested path)
  *
  * Filepicker options:
  * =====
@@ -39,7 +40,7 @@
  * this.filelist, cached filelist
  * this.pages
  * this.page
- * this.filepath, current path
+ * this.filepath, current path (each element of the array is a part of the breadcrumb)
  * this.logindata, cached login form
  */
 
@@ -72,6 +73,67 @@ YUI.add('moodle-core_filepicker', function(Y) {
         var stylenameCap = stylename.substr(0,1).toUpperCase() + stylename.substr(1, stylename.length-1).toLowerCase();
         this.setStyle(stylename, '' + Math.max(value, this.getStylePx('min'+stylenameCap)) + 'px')
         return this;
+    }
+
+    /** set image source to src, if there is preview, remember it in lazyloading.
+     *  If there is a preview and it was already loaded, use it. */
+    Y.Node.prototype.setImgSrc = function(src, realsrc, lazyloading) {
+        if (realsrc) {
+            if (M.core_filepicker.loadedpreviews[realsrc]) {
+                this.set('src', realsrc).addClass('realpreview');
+                return this;
+            } else {
+                if (!this.get('id')) {
+                    this.generateID();
+                }
+                lazyloading[this.get('id')] = realsrc;
+            }
+        }
+        this.set('src', src);
+        return this;
+    }
+
+    /**
+     * Replaces the image source with preview. If the image is inside the treeview, we need
+     * also to update the html property of corresponding YAHOO.widget.HTMLNode
+     * @param array lazyloading array containing associations of imgnodeid->realsrc
+     */
+    Y.Node.prototype.setImgRealSrc = function(lazyloading) {
+        if (this.get('id') && lazyloading[this.get('id')]) {
+            var newsrc = lazyloading[this.get('id')];
+            M.core_filepicker.loadedpreviews[newsrc] = true;
+            this.set('src', newsrc).addClass('realpreview');
+            delete lazyloading[this.get('id')];
+            var treenode = this.ancestor('.fp-treeview')
+            if (treenode && treenode.get('parentNode').treeview) {
+                treenode.get('parentNode').treeview.getRoot().refreshPreviews(this.get('id'), newsrc);
+            }
+        }
+        return this;
+    }
+
+    /** scan TreeView to find which node contains image with id=imgid and replace it's html
+     * with the new image source. */
+    Y.YUI2.widget.Node.prototype.refreshPreviews = function(imgid, newsrc, regex) {
+        if (!regex) {
+            regex = new RegExp("<img\\s[^>]*id=\""+imgid+"\"[^>]*?(/?)>", "im");
+        }
+        if (this.expanded || this.isLeaf) {
+            var html = this.getContentHtml();
+            if (html && this.setHtml && regex.test(html)) {
+                var newhtml = this.html.replace(regex, "<img id=\""+imgid+"\" src=\""+newsrc+"\" class=\"realpreview\"$1>", html);
+                this.setHtml(newhtml);
+                return true;
+            }
+            if (!this.isLeaf && this.children) {
+                for(var c in this.children) {
+                    if (this.children[c].refreshPreviews(imgid, newsrc, regex)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -133,14 +195,12 @@ YUI.add('moodle-core_filepicker', function(Y) {
             var tmpnodedata = {className:options.classnamecallback(node)};
             el.get('children').addClass(tmpnodedata.className);
             if (node.icon) {
-                el.one('.fp-icon').appendChild(Y.Node.create('<img/>').set('src', node.icon));
-                if (node.realicon) {
-                    lazyloading[el.one('.fp-icon img').generateID()] = node.realicon;
-                }
+                el.one('.fp-icon').appendChild(Y.Node.create('<img/>'));
+                el.one('.fp-icon img').setImgSrc(node.icon, node.realicon, lazyloading);
             }
             // create node
             tmpnodedata.html = el.getContent();
-            var tmpNode = new YAHOO.widget.HTMLNode(tmpnodedata, level, false);
+            var tmpNode = new Y.YUI2.widget.HTMLNode(tmpnodedata, level, false);
             if (node.dynamicLoadComplete) {
                 tmpNode.dynamicLoadComplete = true;
             }
@@ -160,7 +220,7 @@ YUI.add('moodle-core_filepicker', function(Y) {
         var initialize_tree_view = function() {
             var parentid = scope.one('.'+classname).get('id');
             // TODO MDL-32736 use YUI3 gallery TreeView
-            scope.treeview = new YAHOO.widget.TreeView(parentid);
+            scope.treeview = new Y.YUI2.widget.TreeView(parentid);
             if (options.dynload) {
                 scope.treeview.setDynamicLoad(Y.bind(options.treeview_dynload, options.callbackcontext), 1);
             }
@@ -181,6 +241,7 @@ YUI.add('moodle-core_filepicker', function(Y) {
                     var pathelement = options.filepath[i];
                     mytreeel.path = pathelement.path;
                     mytreeel.title = pathelement.name;
+                    mytreeel.icon = pathelement.icon;
                     mytreeel.dynamicLoadComplete = true; // we will call it manually
                     mytreeel.expanded = true;
                 }
@@ -213,7 +274,7 @@ YUI.add('moodle-core_filepicker', function(Y) {
                     callback = options.rightclickcallback;
                 }
                 Y.bind(callback, options.callbackcontext)(e, e.node.fileinfo);
-                YAHOO.util.Event.stopEvent(e.event)
+                Y.YUI2.util.Event.stopEvent(e.event)
             });
             // TODO MDL-32736 support right click
             /*if (options.rightclickcallback) {
@@ -238,10 +299,8 @@ YUI.add('moodle-core_filepicker', function(Y) {
             el.get('children').addClass(o.data['classname']);
             el.one('.fp-filename').setContent(o.value);
             if (o.data['icon']) {
-                el.one('.fp-icon').appendChild(Y.Node.create('<img/>').set('src', o.data['icon']));
-                if (o.data['realicon']) {
-                    lazyloading[el.one('.fp-icon img').generateID()] = o.data['realicon'];
-                }
+                el.one('.fp-icon').appendChild(Y.Node.create('<img/>'));
+                el.one('.fp-icon img').setImgSrc(o.data['icon'], o.data['realicon'], lazyloading);
             }
             if (options.rightclickcallback) {
                 el.get('children').addClass('fp-hascontextmenu');
@@ -262,7 +321,6 @@ YUI.add('moodle-core_filepicker', function(Y) {
         }
         /** initialize table view */
         var initialize_table_view = function() {
-            var parentid = scope.one('.'+classname).get('id');
             var cols = [
                 {key: "displayname", label: M.str.moodle.name, allowHTML: true, formatter: formatTitle,
                     sortable: true, sortFn: sortFoldersFirst},
@@ -273,8 +331,13 @@ YUI.add('moodle-core_filepicker', function(Y) {
                 {key: "mimetype", label: M.str.repository.type, allowHTML: true,
                     sortable: true, sortFn: sortFoldersFirst}
             ];
-            scope.tableview = new Y.DataTable({columns: cols});
-            scope.tableview.render('#'+parentid);
+            for (var k in fileslist) {
+                // to speed up sorting and formatting
+                fileslist[k].displayname = file_get_displayname(fileslist[k]);
+                fileslist[k].isfolder = file_is_folder(fileslist[k]);
+                fileslist[k].classname = options.classnamecallback(fileslist[k]);
+            }
+            scope.tableview = new Y.DataTable({columns: cols, data: fileslist});
             scope.tableview.delegate('click', function (e, tableview) {
                 var record = tableview.getRecord(e.currentTarget.get('id'));
                 if (record) {
@@ -294,13 +357,8 @@ YUI.add('moodle-core_filepicker', function(Y) {
         }
         /** append items in table view mode */
         var append_files_table = function() {
-            for (var k in fileslist) {
-                // to speed up sorting and formatting
-                fileslist[k].displayname = file_get_displayname(fileslist[k]);
-                fileslist[k].isfolder = file_is_folder(fileslist[k]);
-                fileslist[k].classname = options.classnamecallback(fileslist[k]);
-            }
-            scope.tableview.addRows(fileslist);
+            var parentnode = scope.one('.'+classname);
+            scope.tableview.render(parentnode);
             scope.tableview.sortable = options.sortable ? true : false;
         };
         /** append items in tree view mode */
@@ -342,14 +400,11 @@ YUI.add('moodle-core_filepicker', function(Y) {
                 filenamediv.setStyleAdv('width', width);
                 imgdiv.setStyleAdv('width', width).setStyleAdv('height', height);
                 var img = Y.Node.create('<img/>').setAttrs({
-                        src: src,
                         title: file_get_description(node),
                         alt: node.thumbnail_alt ? node.thumbnail_alt : file_get_filename(node)}).
                     setStyle('maxWidth', ''+width+'px').
                     setStyle('maxHeight', ''+height+'px');
-                if (node.realthumbnail) {
-                    lazyloading[img.generateID()] = node.realthumbnail;
-                }
+                img.setImgSrc(src, node.realthumbnail, lazyloading);
                 imgdiv.appendChild(img);
                 element.on('click', function(e, nd) {
                     if (options.rightclickcallback && e.target.ancestor('.fp-iconview .fp-contextmenu', true)) {
@@ -388,6 +443,17 @@ YUI.add('moodle-core_filepicker', function(Y) {
         }
 
     }
+
+    /**
+     * creates a node and adds it to the div with id #filesskin. This is needed for CSS to be able
+     * to overwrite YUI skin styles (instead of using !important that does not work in IE)
+     */
+    Y.Node.createWithFilesSkin = function(node) {
+        if (!Y.one('#filesskin')) {
+            Y.one(document.body).appendChild(Y.Node.create('<div/>').set('id', 'filesskin'));
+        }
+        return Y.one('#filesskin').appendChild(Y.Node.create(node));
+    }
 }, '@VERSION@', {
     requires:['base', 'node', 'yui2-treeview', 'panel', 'cookie', 'datatable', 'datatable-sort']
 });
@@ -404,6 +470,11 @@ M.core_filepicker.active_filepicker = null;
  * HTML Templates to use in FilePicker
  */
 M.core_filepicker.templates = M.core_filepicker.templates || {};
+
+/**
+ * Array of image sources for real previews (realicon or realthumbnail) that are already loaded
+ */
+M.core_filepicker.loadedpreviews = M.core_filepicker.loadedpreviews || {};
 
 /**
 * Set selected file info
@@ -447,7 +518,7 @@ M.core_filepicker.init = function(Y, options) {
     Y.extend(FilePickerHelper, Y.Base, {
         api: M.cfg.wwwroot+'/repository/repository_ajax.php',
         cached_responses: {},
-
+        waitinterval : null, // When the loading template is being displayed and its animation is running this will be an interval instance.
         initializer: function(options) {
             this.options = options;
             if (!this.options.savepath) {
@@ -472,6 +543,8 @@ M.core_filepicker.init = function(Y, options) {
             params['client_id'] = args.client_id;
             params['itemid'] = this.options.itemid?this.options.itemid:0;
             params['maxbytes'] = this.options.maxbytes?this.options.maxbytes:-1;
+            // The unlimited value of areamaxbytes is -1, it is defined by FILE_AREA_MAX_BYTES_UNLIMITED.
+            params['areamaxbytes'] = this.options.areamaxbytes ? this.options.areamaxbytes : -1;
             if (this.options.context && this.options.context.id) {
                 params['ctx_id'] = this.options.context.id;
             }
@@ -632,14 +705,13 @@ M.core_filepicker.init = function(Y, options) {
                 this.selectui.hide();
             }
             if (!this.process_dlg) {
-                this.process_dlg_node = Y.Node.create(M.core_filepicker.templates.processexistingfile);
+                this.process_dlg_node = Y.Node.createWithFilesSkin(M.core_filepicker.templates.processexistingfile);
                 var node = this.process_dlg_node;
                 node.generateID();
-                Y.one(document.body).appendChild(node);
                 this.process_dlg = new Y.Panel({
                     srcNode      : node,
                     headerContent: M.str.repository.fileexistsdialogheader,
-                    zIndex       : 800000,
+                    zIndex       : 8000,
                     centered     : true,
                     modal        : true,
                     visible      : false,
@@ -676,13 +748,12 @@ M.core_filepicker.init = function(Y, options) {
                 header = M.str.moodle.info;
             }
             if (!this.msg_dlg) {
-                this.msg_dlg_node = Y.Node.create(M.core_filepicker.templates.message);
+                this.msg_dlg_node = Y.Node.createWithFilesSkin(M.core_filepicker.templates.message);
                 this.msg_dlg_node.generateID();
-                Y.one(document.body).appendChild(this.msg_dlg_node);
 
                 this.msg_dlg = new Y.Panel({
                     srcNode      : this.msg_dlg_node,
-                    zIndex       : 800000,
+                    zIndex       : 8000,
                     centered     : true,
                     modal        : true,
                     visible      : false,
@@ -761,8 +832,7 @@ M.core_filepicker.init = function(Y, options) {
                 if (scope.lazyloading) {
                     fpcontent.all('img').each( function(node) {
                         if (node.get('id') && scope.lazyloading[node.get('id')] && is_node_visible(node)) {
-                            node.set('src', scope.lazyloading[node.get('id')]);
-                            delete scope.lazyloading[node.get('id')];
+                            node.setImgRealSrc(scope.lazyloading);
                         }
                     });
                 }
@@ -817,6 +887,22 @@ M.core_filepicker.init = function(Y, options) {
                 }
             }, false);
         },
+       classnamecallback : function(node) {
+            var classname = '';
+            if (node.children) {
+                classname = classname + ' fp-folder';
+            }
+            if (node.isref) {
+                classname = classname + ' fp-isreference';
+            }
+            if (node.refcount) {
+                classname = classname + ' fp-hasreferences';
+            }
+            if (node.originalmissing) {
+                classname = classname + ' fp-originalmissing';
+            }
+            return Y.Lang.trim(classname);
+        },
         /** displays list of files in tree (list) view mode. If param appenditems is specified,
          * appends those items to the end of the list. Otherwise (default behaviour)
          * clears the contents and displays the items from this.filelist */
@@ -848,13 +934,12 @@ M.core_filepicker.init = function(Y, options) {
                         // save current path and filelist (in case we want to jump to other viewmode)
                         this.filepath = e.node.origpath;
                         this.filelist = e.node.origlist;
+                        this.currentpath = e.node.path;
                         this.print_path();
                         this.content_scrolled();
                     }
                 },
-                classnamecallback : function(node) {
-                    return node.children ? 'fp-folder' : '';
-                },
+                classnamecallback : this.classnamecallback,
                 dynload : this.active_repo.dynload,
                 filepath : this.filepath,
                 treeview_dynload : this.treeview_dynload
@@ -885,7 +970,6 @@ M.core_filepicker.init = function(Y, options) {
                         if (this.active_repo.dynload) {
                             this.list({'path':node.path});
                         } else {
-                            this.filepath = node.path;
                             this.filelist = node.children;
                             this.view_files();
                         }
@@ -893,9 +977,7 @@ M.core_filepicker.init = function(Y, options) {
                         this.select_file(node);
                     }
                 },
-                classnamecallback : function(node) {
-                    return node.children ? 'fp-folder' : '';
-                }
+                classnamecallback : this.classnamecallback
             };
             this.fpnode.one('.fp-content').fp_display_filelist(options, list, this.lazyloading);
         },
@@ -922,7 +1004,6 @@ M.core_filepicker.init = function(Y, options) {
                         if (this.active_repo.dynload) {
                             this.list({'path':node.path});
                         } else {
-                            this.filepath = node.path;
                             this.filelist = node.children;
                             this.view_files();
                         }
@@ -930,9 +1011,7 @@ M.core_filepicker.init = function(Y, options) {
                         this.select_file(node);
                     }
                 },
-                classnamecallback : function(node) {
-                    return node.children ? 'fp-folder' : '';
-                }
+                classnamecallback : this.classnamecallback
             };
             this.fpnode.one('.fp-content').fp_display_filelist(options, list, this.lazyloading);
         },
@@ -944,9 +1023,13 @@ M.core_filepicker.init = function(Y, options) {
             }
             this.active_repo.nextpagerequested = true;
             var nextpage = this.active_repo.page+1;
-            var args = {page:nextpage, repo_id:this.active_repo.id, path:this.active_repo.path};
+            var args = {
+                page: nextpage,
+                repo_id: this.active_repo.id
+            };
             var action = this.active_repo.issearchresult ? 'search' : 'list';
             this.request({
+                path: this.currentpath,
                 scope: this,
                 action: action,
                 client_id: this.options.client_id,
@@ -954,10 +1037,20 @@ M.core_filepicker.init = function(Y, options) {
                 params: args,
                 callback: function(id, obj, args) {
                     var scope = args.scope;
-                    // check that we are still in the same repository and are expecting this page
+                    // Check that we are still in the same repository and are expecting this page. We have no way
+                    // to compare the requested page and the one returned, so we assume that if the last chunk
+                    // of the breadcrumb is similar, then we probably are on the same page.
+                    var samepage = true;
+                    if (obj.path && scope.filepath) {
+                        var pathbefore = scope.filepath[scope.filepath.length-1];
+                        var pathafter = obj.path[obj.path.length-1];
+                        if (pathbefore.path != pathafter.path) {
+                            samepage = false;
+                        }
+                    }
                     if (scope.active_repo.hasmorepages && obj.list && obj.page &&
                             obj.repo_id == scope.active_repo.id &&
-                            obj.page == scope.active_repo.page+1 && obj.path == scope.path) {
+                            obj.page == scope.active_repo.page+1 && samepage) {
                         scope.parse_repository_options(obj, true);
                         scope.view_files(obj.list)
                     }
@@ -1057,10 +1150,7 @@ M.core_filepicker.init = function(Y, options) {
                     if (origlicense) {
                         origlicense = origlicense.getContent();
                     }
-                    var newlicenseval = license.get('value');
-                    if (newlicenseval && this.options.licenses[newlicenseval] != origlicense) {
-                        Y.Cookie.set('recentlicense', newlicenseval);
-                    }
+                    this.set_preference('recentlicense', license.get('value'));
                 }
                 params['author'] = selectnode.one('.fp-setauthor input').get('value');
 
@@ -1123,7 +1213,37 @@ M.core_filepicker.init = function(Y, options) {
             }, this);
         },
         wait: function() {
-            this.fpnode.one('.fp-content').setContent(M.core_filepicker.templates.loading);
+            // First check there isn't already an interval in play, and if there is kill it now.
+            if (this.waitinterval != null) {
+                clearInterval(this.waitinterval);
+            }
+            // Prepare the root node we will set content for and the loading template we want to display as a YUI node.
+            var root = this.fpnode.one('.fp-content');
+            var content = Y.Node.create(M.core_filepicker.templates.loading).addClass('fp-content-hidden').setStyle('opacity', 0);
+            var count = 0;
+            // Initiate an interval, we will have a count which will increment every 100 milliseconds.
+            // Count 0 - the loading icon will have visibility set to hidden (invisible) and have an opacity of 0 (invisible also)
+            // Count 5 - the visiblity will be switched to visible but opacity will still be at 0 (inivisible)
+            // Counts 6 - 15 opacity will be increased by 0.1 making the loading icon visible over the period of a second
+            // Count 16 - The interval will be cancelled.
+            var interval = setInterval(function(){
+                if (!content || !root.contains(content) || count >= 15) {
+                    clearInterval(interval);
+                    return true;
+                }
+                if (count == 5) {
+                    content.removeClass('fp-content-hidden');
+                } else if (count > 5) {
+                    var opacity = parseFloat(content.getStyle('opacity'));
+                    content.setStyle('opacity', opacity + 0.1);
+                }
+                count++;
+                return false;
+            }, 100);
+            // Store the wait interval so that we can check it in the future.
+            this.waitinterval = interval;
+            // Set the content to the loading template.
+            root.setContent(content);
         },
         viewbar_set_enabled: function(mode) {
             var viewbar = this.fpnode.one('.fp-viewbar')
@@ -1151,19 +1271,17 @@ M.core_filepicker.init = function(Y, options) {
                 }
                 this.viewbar_set_enabled(true)
                 this.view_files();
-                Y.Cookie.set('recentviewmode', this.viewmode);
+                this.set_preference('recentviewmode', this.viewmode);
             }
         },
         render: function() {
             var client_id = this.options.client_id;
-            this.fpnode = Y.Node.create(M.core_filepicker.templates.generallayout).
+            this.fpnode = Y.Node.createWithFilesSkin(M.core_filepicker.templates.generallayout).
                 set('id', 'filepicker-'+client_id);
-            this.selectnode = Y.Node.create(M.core_filepicker.templates.selectlayout);
-            Y.one(document.body).appendChild(this.fpnode);
             this.mainui = new Y.Panel({
                 srcNode      : this.fpnode,
                 headerContent: M.str.repository.filepicker,
-                zIndex       : 500000,
+                zIndex       : 5000,
                 centered     : true,
                 modal        : true,
                 visible      : false,
@@ -1180,12 +1298,11 @@ M.core_filepicker.init = function(Y, options) {
                 this.mainui.set('y', 0);
             }
             // create panel for selecting a file (initially hidden)
-            this.selectnode = Y.Node.create(M.core_filepicker.templates.selectlayout).
+            this.selectnode = Y.Node.createWithFilesSkin(M.core_filepicker.templates.selectlayout).
                 set('id', 'filepicker-select-'+client_id);
-            Y.one(document.body).appendChild(this.selectnode);
             this.selectui = new Y.Panel({
                 srcNode      : this.selectnode,
-                zIndex       : 600000,
+                zIndex       : 6000,
                 centered     : true,
                 modal        : true,
                 close        : true,
@@ -1231,7 +1348,7 @@ M.core_filepicker.init = function(Y, options) {
                         set('id', 'fp-repo-'+client_id+'-'+repository.id).
                         on('click', function(e, repository_id) {
                             e.preventDefault();
-                            Y.Cookie.set('recentrepository', repository_id);
+                            this.set_preference('recentrepository', repository_id);
                             this.hide_header();
                             this.list({'repo_id':repository_id});
                         }, this /*handler running scope*/, repository.id/*second argument of handler*/);
@@ -1284,6 +1401,8 @@ M.core_filepicker.init = function(Y, options) {
             this.active_repo.norefresh = (data.login || data.norefresh); // this is either login form or 'norefresh' attribute set
             this.active_repo.nologin = (data.login || data.nologin); // this is either login form or 'nologin' attribute is set
             this.active_repo.logouttext = data.logouttext?data.logouttext:null;
+            this.active_repo.logouturl = (data.logouturl || '');
+            this.active_repo.message = (data.message || '');
             this.active_repo.help = data.help?data.help:null;
             this.active_repo.manage = data.manage?data.manage:null;
             this.print_header();
@@ -1460,6 +1579,10 @@ M.core_filepicker.init = function(Y, options) {
             if (!args.repo_id) {
                 args.repo_id = this.active_repo.id;
             }
+            if (!args.path) {
+                args.path = '';
+            }
+            this.currentpath = args.path;
             this.request({
                 action: 'list',
                 client_id: this.options.client_id,
@@ -1476,7 +1599,7 @@ M.core_filepicker.init = function(Y, options) {
             }
             node.setContent('');
             var licenses = this.options.licenses;
-            var recentlicense = Y.Cookie.get('recentlicense');
+            var recentlicense = this.get_preference('recentlicense');
             if (recentlicense) {
                 this.options.defaultlicense=recentlicense;
             }
@@ -1498,7 +1621,7 @@ M.core_filepicker.init = function(Y, options) {
             });
             if (!licenseset) {
                 // we did not find the value in the list
-                var recentlicense = Y.Cookie.get('recentlicense');
+                var recentlicense = this.get_preference('recentlicense');
                 node.all('option[selected]').set('selected', false);
                 node.all('option[value='+recentlicense+']').set('selected', true);
             }
@@ -1516,13 +1639,18 @@ M.core_filepicker.init = function(Y, options) {
             var client_id = this.options.client_id;
             var id = data.upload.id+'_'+client_id;
             var content = this.fpnode.one('.fp-content');
-            content.setContent(M.core_filepicker.templates.uploadform);
+            var template_name = 'uploadform_'+this.options.repositories[data.repo_id].type;
+            var template = M.core_filepicker.templates[template_name] || M.core_filepicker.templates['uploadform'];
+            content.setContent(template);
 
             content.all('.fp-file,.fp-saveas,.fp-setauthor,.fp-setlicense').each(function (node) {
                 node.all('label').set('for', node.one('input,select').generateID());
             });
             content.one('form').set('id', id);
             content.one('.fp-file input').set('name', 'repo_upload_file');
+            if (data.upload.label && content.one('.fp-file label')) {
+                content.one('.fp-file label').setContent(data.upload.label);
+            }
             content.one('.fp-saveas input').set('name', 'title');
             content.one('.fp-setauthor input').setAttrs({name:'author', value:this.options.author});
             content.one('.fp-setlicense select').set('name', 'license');
@@ -1540,7 +1668,8 @@ M.core_filepicker.init = function(Y, options) {
             content.one('.fp-upload-btn').on('click', function(e) {
                 e.preventDefault();
                 var license = content.one('.fp-setlicense select');
-                Y.Cookie.set('recentlicense', license.get('value'));
+
+                this.set_preference('recentlicense', license.get('value'));
                 if (!content.one('.fp-file input').get('value')) {
                     scope.print_msg(M.str.repository.nofilesattached, 'error');
                     return false;
@@ -1590,11 +1719,14 @@ M.core_filepicker.init = function(Y, options) {
                         callback: this.display_response
                     }, true);
                 }
+                if (this.active_repo.logouturl) {
+                    window.open(this.active_repo.logouturl, 'repo_auth', 'location=0,status=0,width=500,height=300,scrollbars=yes');
+                }
             }, this);
             toolbar.one('.fp-tb-refresh').one('a,button').on('click', function(e) {
                 e.preventDefault();
                 if (!this.active_repo.norefresh) {
-                    this.list();
+                    this.list({ path: this.currentpath });
                 }
             }, this);
             toolbar.one('.fp-tb-search form').
@@ -1612,7 +1744,7 @@ M.core_filepicker.init = function(Y, options) {
                             callback: this.display_response
                         }, true);
                     }
-                }, this);
+            }, this);
 
             // it does not matter what kind of element is .fp-tb-manage, we create a dummy <a>
             // element and use it to open url on click event
@@ -1631,7 +1763,7 @@ M.core_filepicker.init = function(Y, options) {
                 setAttrs({id:'fp-tb-help-'+client_id+'-link', target:'_blank'}).
                 setStyle('display', 'none');
             toolbar.append(helplnk);
-            toolbar.one('.fp-tb-manage').one('a,button').
+            toolbar.one('.fp-tb-help').one('a,button').
                 on('click', function(e) {
                     e.preventDefault();
                     helplnk.simulate('click')
@@ -1678,6 +1810,14 @@ M.core_filepicker.init = function(Y, options) {
                         if (obj.repo_id == scope.active_repo.id && obj.form) {
                             // if we did not jump to another repository meanwhile
                             searchform.setContent(obj.form);
+                            // Highlight search text when user click for search.
+                            var searchnode = searchform.one('input[name="s"]');
+                            if (searchnode) {
+                                searchnode.once('click', function(e) {
+                                    e.preventDefault();
+                                    this.select();
+                                });
+                            }
                         }
                     }
                 }, false);
@@ -1701,6 +1841,10 @@ M.core_filepicker.init = function(Y, options) {
             // help url
             enable_tb_control(toolbar.one('.fp-tb-help'), r.help);
             Y.one('#fp-tb-help-'+client_id+'-link').set('href', r.help);
+
+            // message
+            enable_tb_control(toolbar.one('.fp-tb-message'), r.message);
+            toolbar.one('.fp-tb-message').setContent(r.message);
         },
         print_path: function() {
             if (!this.pathbar) {
@@ -1759,13 +1903,26 @@ M.core_filepicker.init = function(Y, options) {
         show_recent_repository: function() {
             this.hide_header();
             this.viewbar_set_enabled(false);
-            var repository_id = Y.Cookie.get('recentrepository');
-            this.viewmode = Y.Cookie.get('recentviewmode', Number);
+            var repository_id = this.get_preference('recentrepository');
+            this.viewmode = this.get_preference('recentviewmode');
             if (this.viewmode != 2 && this.viewmode != 3) {
                 this.viewmode = 1;
             }
             if (this.options.repositories[repository_id]) {
                 this.list({'repo_id':repository_id});
+            }
+        },
+        get_preference: function (name) {
+            if (this.options.userprefs[name]) {
+                return this.options.userprefs[name];
+            } else {
+                return false;
+            }
+        },
+        set_preference: function(name, value) {
+            if (this.options.userprefs[name] != value) {
+                M.util.set_user_preference('filepicker_' + name, value);
+                this.options.userprefs[name] = value;
             }
         }
     });

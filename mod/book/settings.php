@@ -1,5 +1,5 @@
 <?php
-// This file is part of Book module for Moodle - http://moodle.org/
+// This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@ if ($ADMIN->fulltree) {
     $options = book_get_numbering_types();
 
     $settings->add(new admin_setting_configmultiselect('book/numberingoptions',
-        get_string('numberingoptions', 'mod_book'), get_string('numberingoptions_help', 'mod_book'),
+        get_string('numberingoptions', 'mod_book'), get_string('numberingoptions_desc', 'mod_book'),
         array_keys($options), $options));
 
 

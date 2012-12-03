@@ -1,5 +1,5 @@
 <?php
-// This file is part of Book plugin for Moodle - http://moodle.org/
+// This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -84,7 +84,7 @@ function toolbook_importhtml_import_chapters($package, $type, $book, $context, $
                 $chapter->id = $DB->insert_record('book_chapters', $chapter);
                 $chapters[$chapter->id] = $chapter;
 
-                add_to_log($book->course, 'book', 'update', 'view.php?id='.$context->instanceid.'&chapterid='.$chapter->id, $book->id, $context->instanceid);
+                add_to_log($book->course, 'book', 'add chapter', 'view.php?id='.$context->instanceid.'&chapterid='.$chapter->id, $chapter->id, $context->instanceid);
             }
         }
     }
@@ -298,10 +298,10 @@ function toolbook_importhtml_get_chapter_files($package, $type) {
             }
         }
     }
-    // TODO: natural dir sorting would be nice here...
-    textlib::asort($tophtmlfiles);
-    textlib::asort($subhtmlfiles);
-    textlib::asort($topdirs);
+
+    collatorlib::ksort($tophtmlfiles, collatorlib::SORT_NATURAL);
+    collatorlib::ksort($subhtmlfiles, collatorlib::SORT_NATURAL);
+    collatorlib::ksort($topdirs, collatorlib::SORT_NATURAL);
 
     $chapterfiles = array();
 
@@ -313,7 +313,7 @@ function toolbook_importhtml_get_chapter_files($package, $type) {
             if (empty($htmlfiles)) {
                 continue;
             }
-            textlib::asort($htmlfiles);
+            collatorlib::ksort($htmlfiles, collatorlib::SORT_NATURAL);
             if (isset($htmlfiles[$dir.'/index.html'])) {
                 $htmlfile = $htmlfiles[$dir.'/index.html'];
             } else if (isset($htmlfiles[$dir.'/index.htm'])) {

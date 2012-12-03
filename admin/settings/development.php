@@ -14,6 +14,10 @@ if ($hassiteconfig) { // speedup for non-admins, add all caps used on this page
     $temp->add(new admin_setting_configcheckbox('enablegroupmembersonly', new lang_string('enablegroupmembersonly', 'admin'), new lang_string('configenablegroupmembersonly', 'admin'), 0));
 
     $temp->add(new admin_setting_configcheckbox('dndallowtextandlinks', new lang_string('dndallowtextandlinks', 'admin'), new lang_string('configdndallowtextandlinks', 'admin'), 0));
+    // The CSS optimiser setting. When changed we need to reset the theme caches in order to ensure they are regenerated through the optimiser.
+    $enablecssoptimiser = new admin_setting_configcheckbox('enablecssoptimiser', new lang_string('enablecssoptimiser','admin'), new lang_string('enablecssoptimiser_desc','admin'), 0);
+    $enablecssoptimiser->set_updatedcallback('theme_reset_all_caches');
+    $temp->add($enablecssoptimiser);
 
     $ADMIN->add('experimental', $temp);
 
@@ -21,7 +25,6 @@ if ($hassiteconfig) { // speedup for non-admins, add all caps used on this page
     $temp = new admin_settingpage('debugging', new lang_string('debugging', 'admin'));
     $temp->add(new admin_setting_special_debug());
     $temp->add(new admin_setting_configcheckbox('debugdisplay', new lang_string('debugdisplay', 'admin'), new lang_string('configdebugdisplay', 'admin'), ini_get_bool('display_errors')));
-    $temp->add(new admin_setting_configcheckbox('xmlstrictheaders', new lang_string('xmlstrictheaders', 'admin'), new lang_string('configxmlstrictheaders', 'admin'), 0));
     $temp->add(new admin_setting_configcheckbox('debugsmtp', new lang_string('debugsmtp', 'admin'), new lang_string('configdebugsmtp', 'admin'), 0));
     $temp->add(new admin_setting_configcheckbox('perfdebug', new lang_string('perfdebug', 'admin'), new lang_string('configperfdebug', 'admin'), '7', '15', '7'));
     $temp->add(new admin_setting_configcheckbox('debugstringids', new lang_string('debugstringids', 'admin'), new lang_string('debugstringids_desc', 'admin'), 0));

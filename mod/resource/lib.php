@@ -234,7 +234,7 @@ function resource_get_coursemodule_info($coursemodule) {
     require_once("$CFG->dirroot/mod/resource/locallib.php");
     require_once($CFG->libdir.'/completionlib.php');
 
-    $context = get_context_instance(CONTEXT_MODULE, $coursemodule->id);
+    $context = context_module::instance($coursemodule->id);
 
     if (!$resource = $DB->get_record('resource', array('id'=>$coursemodule->instance),
             'id, name, display, displayoptions, tobemigrated, revision, intro, introformat')) {
@@ -249,14 +249,14 @@ function resource_get_coursemodule_info($coursemodule) {
     }
 
     if ($resource->tobemigrated) {
-        $info->icon ='i/cross_red_big';
+        $info->icon ='i/invalid';
         return $info;
     }
     $fs = get_file_storage();
     $files = $fs->get_area_files($context->id, 'mod_resource', 'content', 0, 'sortorder DESC, id ASC', false); // TODO: this is not very efficient!!
     if (count($files) >= 1) {
         $mainfile = reset($files);
-        $info->icon = file_file_icon($mainfile);
+        $info->icon = file_file_icon($mainfile, 24);
         $resource->mainfile = $mainfile->get_filename();
     }
 
@@ -455,7 +455,7 @@ function resource_page_type_list($pagetype, $parentcontext, $currentcontext) {
 function resource_export_contents($cm, $baseurl) {
     global $CFG, $DB;
     $contents = array();
-    $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+    $context = context_module::instance($cm->id);
     $resource = $DB->get_record('resource', array('id'=>$cm->instance), '*', MUST_EXIST);
 
     $fs = get_file_storage();
@@ -484,7 +484,7 @@ function resource_export_contents($cm, $baseurl) {
  * Register the ability to handle drag and drop file uploads
  * @return array containing details of the files / types the mod can handle
  */
-function mod_resource_dndupload_register() {
+function resource_dndupload_register() {
     return array('files' => array(
                      array('extension' => '*', 'message' => get_string('dnduploadresource', 'mod_resource'))
                  ));
@@ -495,12 +495,12 @@ function mod_resource_dndupload_register() {
  * @param object $uploadinfo details of the file / content that has been uploaded
  * @return int instance id of the newly created mod
  */
-function mod_resource_dndupload_handle($uploadinfo) {
+function resource_dndupload_handle($uploadinfo) {
     // Gather the required info.
     $data = new stdClass();
     $data->course = $uploadinfo->course->id;
     $data->name = $uploadinfo->displayname;
-    $data->intro = '<p>'.$uploadinfo->displayname.'</p>';
+    $data->intro = '';
     $data->introformat = FORMAT_HTML;
     $data->coursemodule = $uploadinfo->coursemodule;
     $data->files = $uploadinfo->draftitemid;
@@ -512,6 +512,9 @@ function mod_resource_dndupload_handle($uploadinfo) {
     $data->popupwidth = $config->popupwidth;
     $data->printheading = $config->printheading;
     $data->printintro = $config->printintro;
+    $data->showsize = (isset($config->showsize)) ? $config->showsize : 0;
+    $data->showtype = (isset($config->showtype)) ? $config->showtype : 0;
+    $data->filterfiles = $config->filterfiles;
 
     return resource_add_instance($data, null);
 }

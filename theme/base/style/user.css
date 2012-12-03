@@ -3,6 +3,7 @@
 .userprofile .fullprofilelink {text-align:center; margin:10px;}
 .userprofile .profilepicture {float:left; margin-right:20px;}
 .userprofile .description {margin-bottom:20px;}
+.userprofile .label {font-weight:normal;text-align:left;}
 
 .user-box {margin:8px;width:115px;height:160px;text-align:center;float:left;clear: none;}
 
@@ -39,6 +40,9 @@
 .userselector select {width: 100%;}
 .userselector div {margin-top: 0.2em;}
 .userselector div label {margin-right: 0.3em;}
+/* Next style does not work in all browsers but looks nicer when it does */
+.userselector .userselector-infobelow {font-size: 0.8em;}
+
 #userselector_options {padding:0.3em 0;}
 #userselector_options .collapsibleregioncaption {font-weight: bold;}
 #userselector_options p {margin:0.2em 0;text-align:left;}
@@ -54,3 +58,5 @@
 .dir-rtl .userlist table#participants td,
 .dir-rtl .userlist table#participants th {text-align: right;}
 .dir-rtl .userlist table#participants {margin: 0 auto;}
+
+#page-my-index.dir-rtl .block h3.main { text-align: right;}

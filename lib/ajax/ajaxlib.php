@@ -36,9 +36,6 @@
 function user_preference_allow_ajax_update($name, $paramtype) {
     global $USER, $PAGE;
 
-    // Make sure that the required JavaScript libraries are loaded.
-    $PAGE->requires->yui2_lib('connection');
-
     // Record in the session that this user_preference is allowed to updated remotely.
     $USER->ajax_updatable_user_prefs[$name] = $paramtype;
 }
@@ -49,7 +46,7 @@ function user_preference_allow_ajax_update($name, $paramtype) {
  * @return bool
  */
 function ajaxenabled(array $browsers = null) {
-    global $CFG, $USER;
+    global $CFG;
 
     if (!empty($browsers)) {
         $valid = false;
@@ -77,7 +74,7 @@ function ajaxenabled(array $browsers = null) {
         return false;
     }
 
-    if (!empty($CFG->enableajax) && (!empty($USER->ajax) || !isloggedin())) {
+    if (!empty($CFG->enableajax)) {
         return true;
     } else {
         return false;

@@ -67,14 +67,14 @@ class repository_coursefiles extends repository {
             if (is_array($params)) {
                 $filepath  = is_null($params['filepath']) ? NULL : clean_param($params['filepath'], PARAM_PATH);;
                 $filename  = is_null($params['filename']) ? NULL : clean_param($params['filename'], PARAM_FILE);
-                $context = get_context_instance_by_id(clean_param($params['contextid'], PARAM_INT));
+                $context = context::instance_by_id(clean_param($params['contextid'], PARAM_INT));
             }
         } else {
             $filename = null;
             $filepath = null;
             list($context, $course, $cm) = get_context_info_array($this->context->id);
             $courseid = is_object($course) ? $course->id : SITEID;
-            $context = get_context_instance(CONTEXT_COURSE, $courseid);
+            $context = context_course::instance($courseid);
         }
 
         if ($fileinfo = $browser->get_file_info($context, $component, $filearea, $itemid, $filepath, $filename)) {
@@ -122,8 +122,12 @@ class repository_coursefiles extends repository {
                         'datemodified' => $child->get_timemodified(),
                         'datecreated' => $child->get_timecreated(),
                         'source'=> $encodedpath,
+                        'isref' => $child->is_external_file(),
                         'thumbnail' => $OUTPUT->pix_url(file_file_icon($child, 90))->out(false)
                     );
+                    if ($child->get_status() == 666) {
+                        $node['originalmissing'] = true;
+                    }
                     if ($imageinfo = $child->get_imageinfo()) {
                         $fileurl = new moodle_url($child->get_url());
                         $node['realthumbnail'] = $fileurl->out(false, array('preview' => 'thumb', 'oid' => $child->get_timemodified()));
@@ -154,7 +158,7 @@ class repository_coursefiles extends repository {
         $filepath = clean_param($params['filepath'], PARAM_PATH);;
         $filearea = clean_param($params['filearea'], PARAM_AREA);
         $component = clean_param($params['component'], PARAM_COMPONENT);
-        $context = get_context_instance_by_id($contextid);
+        $context = context::instance_by_id($contextid);
 
         $file_info = $browser->get_file_info($context, $component, $filearea, $fileitemid, $filepath, $filename);
         return $file_info->get_url();
@@ -186,7 +190,7 @@ class repository_coursefiles extends repository {
     }
 
     public function supported_returntypes() {
-        return (FILE_INTERNAL | FILE_EXTERNAL | FILE_REFERENCE);
+        return (FILE_INTERNAL | FILE_REFERENCE);
     }
 
     public static function get_type_option_names() {
@@ -203,83 +207,6 @@ class repository_coursefiles extends repository {
     }
 
     /**
-     * Unpack file info and pack it, mainly for data validation
-     *
-     * @param string $source
-     * @return string file referece
-     */
-    public function get_file_reference($source) {
-        $params = unserialize(base64_decode($source));
-
-        if (!is_array($params)) {
-            throw new repository_exception('invalidparams', 'repository');
-        }
-
-        $filename  = is_null($params['filename'])  ? null : clean_param($params['filename'], PARAM_FILE);
-        $filepath  = is_null($params['filepath'])  ? null : clean_param($params['filepath'], PARAM_PATH);;
-        $contextid = is_null($params['contextid']) ? null : clean_param($params['contextid'], PARAM_INT);
-
-        $reference = array();
-        // hard coded filearea, component and itemid for security
-        $reference['component'] = 'course';
-        $reference['filearea']  = 'legacy';
-        $reference['itemid']    = 0;
-        $reference['contextid'] = $contextid;
-        $reference['filepath']  = $filepath;
-        $reference['filename']  = $filename;
-
-        return file_storage::pack_reference($reference);
-    }
-
-    /**
-     * Get file from external repository by reference
-     * {@link repository::get_file_reference()}
-     * {@link repository::get_file()}
-     *
-     * @param stdClass $reference file reference db record
-     * @return stdClass|null|false
-     */
-    public function get_file_by_reference($reference) {
-        $fs = get_file_storage();
-        $ref = $reference->reference;
-        $params = file_storage::unpack_reference($ref);
-        if (!is_array($params)) {
-            throw new repository_exception('invalidparams', 'repository');
-        }
-        $filename  = is_null($params['filename'])  ? null : clean_param($params['filename'], PARAM_FILE);
-        $filepath  = is_null($params['filepath'])  ? null : clean_param($params['filepath'], PARAM_PATH);;
-        $contextid = is_null($params['contextid']) ? null : clean_param($params['contextid'], PARAM_INT);
-
-        // hard coded filearea, component and itemid for security
-        $storedfile = $fs->get_file($contextid, 'course', 'legacy', 0, $filepath, $filename);
-
-        $fileinfo = new stdClass;
-        $fileinfo->contenthash = $storedfile->get_contenthash();
-        $fileinfo->filesize    = $storedfile->get_filesize();
-        return $fileinfo;
-    }
-
-    /**
-     * Return human readable reference information
-     * {@link stored_file::get_reference()}
-     *
-     * @param string $reference
-     * @return string|null
-     */
-    public function get_reference_details($reference) {
-        $params = file_storage::unpack_reference($reference);
-        list($context, $course, $cm) = get_context_info_array($params['contextid']);
-        $coursename = '';
-        if (!empty($course)) {
-            $coursename = '"' . format_string($course->shortname, true, array('context' => get_course_context($context))) . '" ' . get_string('courselegacyfiles');
-        } else {
-            $coursename = get_string('courselegacyfiles');
-        }
-        // Indicate this is from user private area
-        return $coursename . ': ' . $params['filepath'] . $params['filename'];
-    }
-
-    /**
      * Return reference file life time
      *
      * @param string $ref
@@ -288,30 +215,5 @@ class repository_coursefiles extends repository {
     public function get_reference_file_lifetime($ref) {
         // this should be realtime
         return 0;
-    }
-
-    /**
-     * Repository method to serve file
-     *
-     * @param stored_file $storedfile
-     * @param int $lifetime Number of seconds before the file should expire from caches (default 24 hours)
-     * @param int $filter 0 (default)=no filtering, 1=all files, 2=html files only
-     * @param bool $forcedownload If true (default false), forces download of file rather than view in browser/plugin
-     * @param array $options additional options affecting the file serving
-     */
-    public function send_file($storedfile, $lifetime=86400 , $filter=0, $forcedownload=false, array $options = null) {
-        $fs = get_file_storage();
-
-        $reference = $storedfile->get_reference();
-        $params = file_storage::unpack_reference($reference);
-
-        $filename  = is_null($params['filename'])  ? null : clean_param($params['filename'], PARAM_FILE);
-        $filepath  = is_null($params['filepath'])  ? null : clean_param($params['filepath'], PARAM_PATH);;
-        $contextid = is_null($params['contextid']) ? null : clean_param($params['contextid'], PARAM_INT);
-
-        // hard coded file area and component for security
-        $srcfile = $fs->get_file($contextid, 'course', 'legacy', 0, $filepath, $filename);
-
-        send_stored_file($srcfile, $lifetime, $filter, $forcedownload, $options);
     }
 }

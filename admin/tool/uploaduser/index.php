@@ -40,7 +40,7 @@ raise_memory_limit(MEMORY_HUGE);
 
 require_login();
 admin_externalpage_setup('tooluploaduser');
-require_capability('moodle/site:uploadusers', get_context_instance(CONTEXT_SYSTEM));
+require_capability('moodle/site:uploadusers', context_system::instance());
 
 $struserrenamed             = get_string('userrenamed', 'tool_uploaduser');
 $strusernotrenamedexists    = get_string('usernotrenamedexists', 'error');
@@ -86,7 +86,7 @@ $today = make_timestamp(date('Y', $today), date('m', $today), date('d', $today),
 // array of all valid fields for validation
 $STD_FIELDS = array('id', 'firstname', 'lastname', 'username', 'email',
         'city', 'country', 'lang', 'timezone', 'mailformat',
-        'maildisplay', 'maildigest', 'htmleditor', 'ajax', 'autosubscribe',
+        'maildisplay', 'maildigest', 'htmleditor', 'autosubscribe',
         'institution', 'department', 'idnumber', 'skype',
         'msn', 'aim', 'yahoo', 'icq', 'phone1', 'phone2', 'address',
         'url', 'description', 'descriptionformat', 'password',
@@ -731,7 +731,7 @@ if ($formdata = $mform2->is_cancelled()) {
             $usersnew++;
 
             // make sure user context exists
-            get_context_instance(CONTEXT_USER, $user->id);
+            context_user::instance($user->id);
 
             events_trigger('user_created', $user);
 
@@ -805,7 +805,7 @@ if ($formdata = $mform2->is_cancelled()) {
                 $ccache[$shortname]->groups = null;
             }
             $courseid      = $ccache[$shortname]->id;
-            $coursecontext = get_context_instance(CONTEXT_COURSE, $courseid);
+            $coursecontext = context_course::instance($courseid);
             if (!isset($manualcache[$courseid])) {
                 $manualcache[$courseid] = false;
                 if ($manual) {
@@ -857,6 +857,8 @@ if ($formdata = $mform2->is_cancelled()) {
                         if ($duration > 0) { // sanity check
                             $timeend = $today + $duration;
                         }
+                    } else if ($manualcache[$courseid]->enrolperiod > 0) {
+                        $timeend = $today + $manualcache[$courseid]->enrolperiod;
                     }
 
                     $manual->enrol_user($manualcache[$courseid], $user->id, $rid, $today, $timeend);

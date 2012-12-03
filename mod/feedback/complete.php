@@ -87,9 +87,7 @@ if (! $feedback = $DB->get_record("feedback", array("id"=>$cm->instance))) {
     print_error('invalidcoursemodule');
 }
 
-if (!$context = get_context_instance(CONTEXT_MODULE, $cm->id)) {
-        print_error('badcontext');
-}
+$context = context_module::instance($cm->id);
 
 $feedback_complete_cap = false;
 
@@ -507,11 +505,8 @@ if ($feedback_can_submit) {
                 //get the value
                 $frmvaluename = $feedbackitem->typ . '_'. $feedbackitem->id;
                 if (isset($savereturn)) {
-                    if (isset($formdata->{$frmvaluename})) {
-                        $value = $formdata->{$frmvaluename};
-                    } else {
-                        $value = null;
-                    }
+                    $value = isset($formdata->{$frmvaluename}) ? $formdata->{$frmvaluename} : null;
+                    $value = feedback_clean_input_value($feedbackitem, $value);
                 } else {
                     if (isset($feedbackcompletedtmp->id)) {
                         $value = feedback_get_item_value($feedbackcompletedtmp->id,
@@ -530,6 +525,7 @@ if ($feedback_can_submit) {
                     feedback_print_item_complete($feedbackitem, $value, $highlightrequired);
                     echo $OUTPUT->box_end();
                 }
+
                 echo $OUTPUT->box_end();
 
                 $lastbreakposition = $feedbackitem->position; //last item-pos (item or pagebreak)

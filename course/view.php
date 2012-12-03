@@ -14,11 +14,13 @@
     $hide        = optional_param('hide', 0, PARAM_INT);
     $show        = optional_param('show', 0, PARAM_INT);
     $idnumber    = optional_param('idnumber', '', PARAM_RAW);
+    $sectionid   = optional_param('sectionid', 0, PARAM_INT);
     $section     = optional_param('section', 0, PARAM_INT);
     $move        = optional_param('move', 0, PARAM_INT);
     $marker      = optional_param('marker',-1 , PARAM_INT);
     $switchrole  = optional_param('switchrole',-1, PARAM_INT);
     $modchooser  = optional_param('modchooser', -1, PARAM_BOOL);
+    $return      = optional_param('return', 0, PARAM_LOCALURL);
 
     $params = array();
     if (!empty($name)) {
@@ -34,6 +36,11 @@
     $course = $DB->get_record('course', $params, '*', MUST_EXIST);
 
     $urlparams = array('id' => $course->id);
+
+    // Sectionid should get priority over section number
+    if ($sectionid) {
+        $section = $DB->get_field('course_sections', 'section', array('id' => $sectionid, 'course' => $course->id), MUST_EXIST);
+    }
     if ($section) {
         $urlparams['section'] = $section;
     }
@@ -88,8 +95,27 @@
 
     require_once($CFG->dirroot.'/calendar/lib.php');    /// This is after login because it needs $USER
 
-    //TODO: danp do we need different urls?
-    add_to_log($course->id, 'course', 'view', "view.php?id=$course->id", "$course->id");
+    $logparam = 'id='. $course->id;
+    $loglabel = 'view';
+    $infoid = $course->id;
+    if ($section and $section > 0) {
+        $loglabel = 'view section';
+
+        // Get section details and check it exists.
+        $modinfo = get_fast_modinfo($course);
+        $coursesections = $modinfo->get_section_info($section, MUST_EXIST);
+
+        // Check user is allowed to see it.
+        if (!$coursesections->uservisible) {
+            // Note: We actually already know they don't have this capability
+            // or uservisible would have been true; this is just to get the
+            // correct error message shown.
+            require_capability('moodle/course:viewhiddensections', $context);
+        }
+        $infoid = $coursesections->id;
+        $logparam .= '&sectionid='. $infoid;
+    }
+    add_to_log($course->id, 'course', $loglabel, "view.php?". $logparam, $infoid);
 
     $course->format = clean_param($course->format, PARAM_ALPHA);
     if (!file_exists($CFG->dirroot.'/course/format/'.$course->format.'/format.php')) {
@@ -114,8 +140,11 @@
             // Redirect to site root if Editing is toggled on frontpage
             if ($course->id == SITEID) {
                 redirect($CFG->wwwroot .'/?redirect=0');
+            } else if (!empty($return)) {
+                redirect($CFG->wwwroot . $return);
             } else {
-                redirect($PAGE->url);
+                $url = new moodle_url($PAGE->url, array('notifyeditingon' => 1));
+                redirect($url);
             }
         } else if (($edit == 0) and confirm_sesskey()) {
             $USER->editing = 0;
@@ -126,6 +155,8 @@
             // Redirect to site root if Editing is toggled on frontpage
             if ($course->id == SITEID) {
                 redirect($CFG->wwwroot .'/?redirect=0');
+            } else if (!empty($return)) {
+                redirect($CFG->wwwroot . $return);
             } else {
                 redirect($PAGE->url);
             }
@@ -136,7 +167,7 @@
             set_user_preference('usemodchooser', $modchooser);
         }
 
-        if (has_capability('moodle/course:update', $context)) {
+        if (has_capability('moodle/course:sectionvisibility', $context)) {
             if ($hide && confirm_sesskey()) {
                 set_section_visible($course->id, $hide, '0');
                 redirect($PAGE->url);
@@ -146,10 +177,13 @@
                 set_section_visible($course->id, $show, '1');
                 redirect($PAGE->url);
             }
+        }
 
+        if (has_capability('moodle/course:update', $context)) {
             if (!empty($section)) {
-                if (!empty($move) and confirm_sesskey()) {
-                    if (move_section($course, $section, $move)) {
+                if (!empty($move) and has_capability('moodle/course:movesections', $context) and confirm_sesskey()) {
+                    $destsection = $section + $move;
+                    if (move_section_to($course, $section, $destsection)) {
                         if ($course->id == SITEID) {
                             redirect($CFG->wwwroot . '/?redirect=0');
                         } else {
@@ -211,30 +245,17 @@
     // Course wrapper start.
     echo html_writer::start_tag('div', array('class'=>'course-content'));
 
-    $modinfo = get_fast_modinfo($COURSE);
-    get_all_mods($course->id, $mods, $modnames, $modnamesplural, $modnamesused);
-    foreach($mods as $modid=>$unused) {
-        if (!isset($modinfo->cms[$modid])) {
-            rebuild_course_cache($course->id);
-            $modinfo = get_fast_modinfo($COURSE);
-            debugging('Rebuilding course cache', DEBUG_DEVELOPER);
-            break;
-        }
-    }
+    // make sure that section 0 exists (this function will create one if it is missing)
+    course_create_sections_if_missing($course, 0);
 
-    if (!$sections = $modinfo->get_section_info_all()) {   // No sections found
-        $section = new stdClass;
-        $section->course = $course->id;   // Create a default section.
-        $section->section = 0;
-        $section->visible = 1;
-        $section->summaryformat = FORMAT_HTML;
-        $section->id = $DB->insert_record('course_sections', $section);
-        rebuild_course_cache($course->id);
-        $modinfo = get_fast_modinfo($COURSE);
-        if (!$sections = $modinfo->get_section_info_all()) {      // Try again
-            print_error('cannotcreateorfindstructs', 'error');
-        }
-    }
+    // get information about course modules and existing module types
+    // format.php in course formats may rely on presence of these variables
+    $modinfo = get_fast_modinfo($course);
+    $modnames = get_module_types_names();
+    $modnamesplural = get_module_types_names(true);
+    $modnamesused = $modinfo->get_used_module_names();
+    $mods = $modinfo->get_cms();
+    $sections = $modinfo->get_section_info_all();
 
     // CAUTION, hacky fundamental variable defintion to follow!
     // Note that because of the way course fromats are constructed though
@@ -251,7 +272,7 @@
     if (include_course_ajax($course, $modnamesused)) {
         // Add the module chooser
         $renderer = $PAGE->get_renderer('core', 'course');
-        echo $renderer->course_modchooser(get_module_metadata($course, $modnames), $course);
+        echo $renderer->course_modchooser(get_module_metadata($course, $modnames, $displaysection), $course);
     }
 
     echo $OUTPUT->footer();

@@ -5,17 +5,17 @@
 // since they need to exist *before* settingpages and externalpages
 // are added to them.
 
-$systemcontext = get_context_instance(CONTEXT_SYSTEM);
+$systemcontext = context_system::instance();
 $hassiteconfig = has_capability('moodle/site:config', $systemcontext);
 
 $ADMIN->add('root', new admin_externalpage('adminnotifications', new lang_string('notifications'), "$CFG->wwwroot/$CFG->admin/index.php"));
 
-$ADMIN->add('root', new admin_externalpage('registrationindex', new lang_string('registration','admin'),
-        "$CFG->wwwroot/$CFG->admin/registration/index.php"));
-$ADMIN->add('root', new admin_externalpage('registration', new lang_string('registeron','hub'),
+$ADMIN->add('root', new admin_externalpage('registrationmoodleorg', new lang_string('registration', 'admin'),
+        "$CFG->wwwroot/$CFG->admin/registration/register.php?huburl=" . HUB_MOODLEORGHUBURL . "&hubname=Moodle.org"));
+$ADMIN->add('root', new admin_externalpage('registrationhub', new lang_string('registerwith', 'hub'),
         "$CFG->wwwroot/$CFG->admin/registration/register.php", 'moodle/site:config', true));
-$ADMIN->add('root', new admin_externalpage('registrationselector', new lang_string('registeron','hub'),
-        "$CFG->wwwroot/$CFG->admin/registration/hubselector.php", 'moodle/site:config', true));
+$ADMIN->add('root', new admin_externalpage('registrationhubs', new lang_string('hubs', 'admin'),
+        "$CFG->wwwroot/$CFG->admin/registration/index.php", 'moodle/site:config', true));
 $ADMIN->add('root', new admin_externalpage('siteregistrationconfirmed',
         new lang_string('registrationconfirmed', 'hub'),
         $CFG->wwwroot."/".$CFG->admin."/registration/confirmregistration.php", 'moodle/site:config', true));

@@ -54,6 +54,135 @@ class assign_feedback_comments extends assign_feedback_plugin {
     }
 
     /**
+     * Get quickgrading form elements as html
+     *
+     * @param int $userid The user id in the table this quickgrading element relates to
+     * @param mixed $grade - The grade data - may be null if there are no grades for this user (yet)
+     * @return mixed - A html string containing the html form elements required for quickgrading
+     */
+    public function get_quickgrading_html($userid, $grade) {
+        $commenttext = '';
+        if ($grade) {
+            $feedbackcomments = $this->get_feedback_comments($grade->id);
+            if ($feedbackcomments) {
+                $commenttext = $feedbackcomments->commenttext;
+            }
+        }
+
+        return html_writer::tag('label', get_string('pluginname', 'assignfeedback_comments'),
+                array('for'=>'quickgrade_comments_' . $userid, 'class'=>'accesshide'))
+                . html_writer::tag('textarea', $commenttext,
+                array('name'=>'quickgrade_comments_' . $userid, 'id'=>'quickgrade_comments_' . $userid, 'class'=>'quickgrade'));
+    }
+
+    /**
+     * Has the plugin quickgrading form element been modified in the current form submission?
+     *
+     * @param int $userid The user id in the table this quickgrading element relates to
+     * @param stdClass $grade The grade
+     * @return boolean - true if the quickgrading form element has been modified
+     */
+    public function is_quickgrading_modified($userid, $grade) {
+        $commenttext = '';
+        if ($grade) {
+            $feedbackcomments = $this->get_feedback_comments($grade->id);
+            if ($feedbackcomments) {
+                $commenttext = $feedbackcomments->commenttext;
+            }
+        }
+        return optional_param('quickgrade_comments_' . $userid, '', PARAM_TEXT) != $commenttext;
+    }
+
+
+    /**
+     * Override to indicate a plugin supports quickgrading
+     *
+     * @return boolean - True if the plugin supports quickgrading
+     */
+    public function supports_quickgrading() {
+        return true;
+    }
+
+    /**
+     * Return a list of the text fields that can be imported/exported by this plugin
+     *
+     * @return array An array of field names and descriptions. (name=>description, ...)
+     */
+    public function get_editor_fields() {
+        return array('comments' => get_string('pluginname', 'assignfeedback_comments'));
+    }
+
+    /**
+     * Get the saved text content from the editor
+     *
+     * @param string $name
+     * @param int $gradeid
+     * @return string
+     */
+    public function get_editor_text($name, $gradeid) {
+        if ($name == 'comments') {
+            $feedbackcomments = $this->get_feedback_comments($gradeid);
+            if ($feedbackcomments) {
+                return $feedbackcomments->commenttext;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Get the saved text content from the editor
+     *
+     * @param string $name
+     * @param string $value
+     * @param int $gradeid
+     * @return string
+     */
+    public function set_editor_text($name, $value, $gradeid) {
+        global $DB;
+
+        if ($name == 'comments') {
+            $feedbackcomment = $this->get_feedback_comments($gradeid);
+            if ($feedbackcomment) {
+                $feedbackcomment->commenttext = $value;
+                return $DB->update_record('assignfeedback_comments', $feedbackcomment);
+            } else {
+                $feedbackcomment = new stdClass();
+                $feedbackcomment->commenttext = $value;
+                $feedbackcomment->commentformat = FORMAT_HTML;
+                $feedbackcomment->grade = $gradeid;
+                $feedbackcomment->assignment = $this->assignment->get_instance()->id;
+                return $DB->insert_record('assignfeedback_comments', $feedbackcomment) > 0;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Save quickgrading changes
+     *
+     * @param int $userid The user id in the table this quickgrading element relates to
+     * @param stdClass $grade The grade
+     * @return boolean - true if the grade changes were saved correctly
+     */
+    public function save_quickgrading_changes($userid, $grade) {
+        global $DB;
+        $feedbackcomment = $this->get_feedback_comments($grade->id);
+        if ($feedbackcomment) {
+            $feedbackcomment->commenttext = optional_param('quickgrade_comments_' . $userid, '', PARAM_TEXT);
+            return $DB->update_record('assignfeedback_comments', $feedbackcomment);
+        } else {
+            $feedbackcomment = new stdClass();
+            $feedbackcomment->commenttext = optional_param('quickgrade_comments_' . $userid, '', PARAM_TEXT);
+            $feedbackcomment->commentformat = FORMAT_HTML;
+            $feedbackcomment->grade = $grade->id;
+            $feedbackcomment->assignment = $this->assignment->get_instance()->id;
+            return $DB->insert_record('assignfeedback_comments', $feedbackcomment) > 0;
+        }
+    }
+
+    /**
      * Get form elements for the grading page
      *
      * @param stdClass|null $grade
@@ -105,7 +234,7 @@ class assign_feedback_comments extends assign_feedback_plugin {
      * @param bool $showviewlink Set to true to show a link to view the full feedback
      * @return string
      */
-    public function view_summary(stdClass $grade, $showviewlink) {
+    public function view_summary(stdClass $grade, & $showviewlink) {
         $feedbackcomments = $this->get_feedback_comments($grade->id);
         if ($feedbackcomments) {
             $text = format_text($feedbackcomments->commenttext, $feedbackcomments->commentformat, array('context' => $this->assignment->get_context()));
@@ -142,7 +271,8 @@ class assign_feedback_comments extends assign_feedback_plugin {
      */
     public function can_upgrade($type, $version) {
 
-        if (($type == 'upload' || $type == 'uploadsingle') && $version >= 2011112900) {
+        if (($type == 'upload' || $type == 'uploadsingle' ||
+             $type == 'online' || $type == 'offline') && $version >= 2011112900) {
             return true;
         }
         return false;
@@ -245,4 +375,5 @@ class assign_feedback_comments extends assign_feedback_plugin {
     public function is_empty(stdClass $grade) {
         return $this->view($grade) == '';
     }
+
 }

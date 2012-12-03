@@ -53,7 +53,7 @@ M.course_dndupload = {
     // The classes that an element must have to be identified as a course section
     sectionclasses: ['section', 'main'],
     // The ID of the main content area of the page (for adding the 'status' div)
-    pagecontentid: 'page-content',
+    pagecontentid: 'page',
     // The selector identifying the list of modules within a section (note changing this may require
     // changes to the get_mods_element function)
     modslistselector: 'ul.section',
@@ -92,7 +92,9 @@ M.course_dndupload = {
             this.init_events(el);
         }, this);
 
-        this.add_status_div();
+        if (options.showstatus) {
+            this.add_status_div();
+        }
     },
 
     /**
@@ -100,14 +102,18 @@ M.course_dndupload = {
      * is available (or to explain why it is not available)
      */
     add_status_div: function() {
+        var coursecontents = document.getElementById(this.pagecontentid);
+        if (!coursecontents) {
+            return;
+        }
+
         var div = document.createElement('div');
         div.id = 'dndupload-status';
-        var coursecontents = document.getElementById(this.pagecontentid);
-        if (coursecontents) {
-            coursecontents.insertBefore(div, coursecontents.firstChild);
-        }
-        div = this.Y.one(div);
+        div.style.opacity = 0.0;
+        coursecontents.insertBefore(div, coursecontents.firstChild);
 
+        var Y = this.Y;
+        div = Y.one(div);
         var handlefile = (this.handlers.filehandlers.length > 0);
         var handletext = false;
         var handlelink = false;
@@ -134,6 +140,25 @@ M.course_dndupload = {
             $msgident += 'link';
         }
         div.setContent(M.util.get_string($msgident, 'moodle'));
+
+        var fadeanim = new Y.Anim({
+            node: '#dndupload-status',
+            from: {
+                opacity: 0.0,
+                top: '-30px'
+            },
+
+            to: {
+                opacity: 1.0,
+                top: '0px'
+            },
+            duration: 0.5
+        });
+        fadeanim.once('end', function(e) {
+            this.set('reverse', 1);
+            Y.later(3000, this, 'run', null, false);
+        });
+        fadeanim.run();
     },
 
     /**
@@ -417,32 +442,36 @@ M.course_dndupload = {
             parent: modsel,
             li: document.createElement('li'),
             div: document.createElement('div'),
+            indentdiv: document.createElement('div'),
             a: document.createElement('a'),
             icon: document.createElement('img'),
             namespan: document.createElement('span'),
+            groupingspan: document.createElement('span'),
             progressouter: document.createElement('span'),
             progress: document.createElement('span')
         };
 
         resel.li.className = 'activity resource modtype_resource';
 
-        resel.div.className = 'mod-indent';
-        resel.li.appendChild(resel.div);
+        resel.indentdiv.className = 'mod-indent';
+        resel.li.appendChild(resel.indentdiv);
+
+        resel.div.className = 'activityinstance';
+        resel.indentdiv.appendChild(resel.div);
 
         resel.a.href = '#';
         resel.div.appendChild(resel.a);
 
         resel.icon.src = M.util.image_url('i/ajaxloader');
-        resel.icon.className = 'activityicon';
+        resel.icon.className = 'activityicon iconlarge';
         resel.a.appendChild(resel.icon);
-
-        resel.a.appendChild(document.createTextNode(' '));
 
         resel.namespan.className = 'instancename';
         resel.namespan.innerHTML = name;
         resel.a.appendChild(resel.namespan);
 
-        resel.div.appendChild(document.createTextNode(' '));
+        resel.groupingspan.className = 'groupinglabel';
+        resel.div.appendChild(resel.groupingspan);
 
         resel.progressouter.className = 'dndupload-progress-outer';
         resel.progress.className = 'dndupload-progress-inner';
@@ -489,12 +518,13 @@ M.course_dndupload = {
             namespan: document.createElement('span')
         };
 
-        preview.li.className = 'dndupload-preview activity resource modtype_resource dndupload-hidden';
+        preview.li.className = 'dndupload-preview dndupload-hidden';
 
         preview.div.className = 'mod-indent';
         preview.li.appendChild(preview.div);
 
         preview.icon.src = M.util.image_url('t/addfile');
+        preview.icon.className = 'icon';
         preview.div.appendChild(preview.icon);
 
         preview.div.appendChild(document.createTextNode(' '));
@@ -699,9 +729,16 @@ M.course_dndupload = {
                             resel.icon.src = result.icon;
                             resel.a.href = result.link;
                             resel.namespan.innerHTML = result.name;
+
+                            if (result.groupingname) {
+                                resel.groupingspan.innerHTML = '(' + result.groupingname + ')';
+                            } else {
+                                resel.div.removeChild(resel.groupingspan);
+                            }
+
                             resel.div.removeChild(resel.progressouter);
                             resel.li.id = result.elementid;
-                            resel.div.innerHTML += result.commands;
+                            resel.indentdiv.innerHTML += result.commands;
                             if (result.onclick) {
                                 resel.a.onclick = result.onclick;
                             }
@@ -879,6 +916,13 @@ M.course_dndupload = {
                             resel.icon.src = result.icon;
                             resel.a.href = result.link;
                             resel.namespan.innerHTML = result.name;
+
+                            if (result.groupingname) {
+                                resel.groupingspan.innerHTML = '(' + result.groupingname + ')';
+                            } else {
+                                resel.div.removeChild(resel.groupingspan);
+                            }
+
                             resel.div.removeChild(resel.progressouter);
                             resel.li.id = result.elementid;
                             resel.div.innerHTML += result.commands;

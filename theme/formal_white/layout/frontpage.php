@@ -29,17 +29,20 @@ if ($hascustommenu) {
 }
 
 /************************************************************************************************/
-if (!empty($PAGE->theme->settings->frontpagelogo)) {
-    $logourl = $PAGE->theme->settings->frontpagelogo;
-} else if (!empty($PAGE->theme->settings->logo)) {
-    $logourl = $PAGE->theme->settings->logo;
+if (!empty($PAGE->theme->settings->frontpagelogourl)) {
+    $logourl = $PAGE->theme->settings->frontpagelogourl;
+} else if (!empty($PAGE->theme->settings->customlogourl)) {
+    $logourl = $PAGE->theme->settings->customlogourl;
 } else {
     $logourl = $OUTPUT->pix_url('logo', 'theme');
+}
+if (strtolower(substr($logourl, 0, 4)) != 'http') {
+    $logourl = $CFG->wwwroot.'/'.$logourl;
 }
 
 $hasframe = !isset($PAGE->theme->settings->noframe) || !$PAGE->theme->settings->noframe;
 
-$displaylogo = !isset($PAGE->theme->settings->displaylogo) || $PAGE->theme->settings->displaylogo;
+$displaylogo = !isset($PAGE->theme->settings->headercontent) || $PAGE->theme->settings->headercontent;
 /************************************************************************************************/
 
 echo $OUTPUT->doctype() ?>
@@ -67,13 +70,6 @@ echo $OUTPUT->doctype() ?>
 <!-- begin of page-header -->
                             <?php if ($hasheading) { ?>
                             <div id="page-header">
-                            <?php if ($displaylogo) { ?>
-                                <div id="headerlogo">
-                                    <img src="<?php echo $logourl ?>" alt="Custom logo here" />
-                                </div>
-                            <?php } else { ?>
-                                <h1 class="headerheading"><?php echo $PAGE->heading ?></h1>
-                            <?php } ?>
 
                                 <div class="headermenu">
                                     <?php
@@ -84,6 +80,15 @@ echo $OUTPUT->doctype() ?>
                                     echo $PAGE->headingmenu;
                                 ?>
                                 </div>
+
+                                <?php if ($displaylogo) { ?>
+                                    <div id="headerlogo">
+                                        <img src="<?php echo $logourl ?>" alt="Custom logo here" />
+                                    </div>
+                                <?php } else { ?>
+                                    <h1 class="headerheading"><?php echo $PAGE->heading ?></h1>
+                                <?php } ?>
+
                             </div>
                             <?php } ?>
 <!-- end of page-header -->

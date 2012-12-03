@@ -232,7 +232,7 @@ abstract class question_behaviour {
         $vars = array('comment' => PARAM_RAW);
         if ($this->qa->get_max_mark()) {
             $vars['mark'] = question_attempt::PARAM_MARK;
-            $vars['maxmark'] = PARAM_NUMBER;
+            $vars['maxmark'] = PARAM_FLOAT;
         }
         return $vars;
     }
@@ -458,7 +458,8 @@ abstract class question_behaviour {
                 $fraction = null;
             } else if ($fraction > 1 || $fraction < $this->qa->get_min_fraction()) {
                 throw new coding_exception('Score out of range when processing ' .
-                        'a manual grading action.', $pendingstep);
+                        'a manual grading action.', 'Question ' . $this->question->id .
+                                ', slot ' . $this->qa->get_slot() . ', fraction ' . $fraction);
             }
             $pendingstep->set_fraction($fraction);
         }
@@ -466,6 +467,20 @@ abstract class question_behaviour {
         $pendingstep->set_state($this->qa->get_state()->corresponding_commented_state(
                 $pendingstep->get_fraction()));
         return question_attempt::KEEP;
+    }
+
+    /**
+     * Validate that the manual grade submitted for a particular question is in range.
+     * @param int $qubaid the question_usage id.
+     * @param int $slot the slot number within the usage.
+     * @return bool whether the submitted data is in range.
+     */
+    public static function is_manual_grade_in_range($qubaid, $slot) {
+        $prefix = 'q' . $qubaid . ':' . $slot . '_';
+        $mark = question_utils::optional_param_mark($prefix . '-mark');
+        $maxmark = optional_param($prefix . '-maxmark', null, PARAM_FLOAT);
+        $minfraction = optional_param($prefix . ':minfraction', null, PARAM_FLOAT);
+        return is_null($mark) || ($mark >= $minfraction * $maxmark && $mark <= $maxmark);
     }
 
     /**

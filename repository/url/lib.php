@@ -127,6 +127,7 @@ EOD;
         }
         $this->processedfiles[] = $url;
         $curl = new curl;
+        $curl->setopt(array('CURLOPT_FOLLOWLOCATION' => true, 'CURLOPT_MAXREDIRS' => 3));
         $msg = $curl->head($url);
         $info = $curl->get_info();
         if ($info['http_code'] != 200) {
@@ -217,5 +218,23 @@ EOD;
     public function supported_returntypes() {
         return (FILE_INTERNAL | FILE_EXTERNAL);
     }
-}
 
+    /**
+     * Return the source information
+     *
+     * @param stdClass $url
+     * @return string|null
+     */
+    public function get_file_source_info($url) {
+        return $url;
+    }
+
+    /**
+     * file types supported by url downloader plugin
+     *
+     * @return array
+     */
+    public function supported_filetypes() {
+        return array('web_image');
+    }
+}

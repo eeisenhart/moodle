@@ -23,10 +23,12 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+$string['activityoverview'] = 'You have upcoming chat';
 $string['ajax'] = 'Version using Ajax';
 $string['autoscroll'] = 'Auto scroll';
 $string['beep'] = 'beep';
 $string['cantlogin'] = 'Could not log in to chat room!!';
+$string['composemessage'] = 'Compose a message';
 $string['configmethod'] = 'The ajax chat method provide an ajax based chat interface, it contacts server regularly for update. The normal chat method involves the clients regularly contacting the server for updates. It requires no configuration and works everywhere, but it can create a large load on the server with many chatters.  Using a server daemon requires shell access to Unix, but it results in a fast scalable chat environment.';
 $string['confignormalupdatemode'] = 'Chatroom updates are normally served efficiently using the <em>Keep-Alive</em> feature of HTTP 1.1, but this is still quite heavy on the server. A more advanced method is to use the <em>Stream</em> strategy to feed updates to the users. Using <em>Stream</em> scales much better (similar to the chatd method) but may not be supported by your server.';
 $string['configoldping'] = 'What is the maximum time that may pass before we detect that a user has disconnected (in seconds)? This is just an upper limit, as usually disconnects are detected very quickly. Lower values will be more demanding on your server. If you are using the normal method, <strong>never</strong> set this lower than 2 * chat_refresh_room.';
@@ -58,6 +60,7 @@ $string['chat:readlog'] = 'Read chat logs';
 $string['chatreport'] = 'Chat sessions';
 $string['chat:talk'] = 'Talk in a chat';
 $string['chattime'] = 'Next chat time';
+$string['entermessage'] = "Enter your message";
 $string['idle'] = 'Idle';
 $string['inputarea'] = 'Input area';
 $string['invalidid'] = 'Could not find that chat room!';
@@ -75,17 +78,18 @@ $string['methoddaemon'] = 'Chat server daemon';
 $string['methodnormal'] = 'Normal method';
 $string['methodajax'] = 'Ajax method';
 $string['modulename'] = 'Chat';
-$string['modulename_help'] = 'The chat activity module enables participants to have real-time synchronous discussions.
+$string['modulename_help'] = 'The chat activity module enables participants to have text-based, real-time synchronous discussions.
 
-The chat may be a one-off activity or it may be repeated at the same time each day or each week. Chat sessions are saved and can be made available for everyone to view or restricted to users with the capability to view chat session logs.
+The chat may be a one-time activity or it may be repeated at the same time each day or each week. Chat sessions are saved and can be made available for everyone to view or restricted to users with the capability to view chat session logs.
 
 Chats are especially useful when the group chatting is not able to meet face-to-face, such as
 
-* Regular meetings of students doing online courses to enable them to share experiences with others on the same course but in a different city (or country)
+* Regular meetings of students participating in online courses to enable them to share experiences with others in the same course but in a different location
 * A student temporarily unable to attend in person chatting with their teacher to catch up with work
 * Students out on work experience getting together to discuss their experiences with each other and their teacher
 * Younger children using chat at home in the evenings as a controlled (monitored) introduction to the world of social networking
-* A question and answer session with an invited speaker in a different location';
+* A question and answer session with an invited speaker in a different location
+* Sessions to help students prepare for tests where the teacher, or other students, would pose sample questions';
 $string['modulename_link'] = 'mod/chat/view';
 $string['modulenameplural'] = 'Chats';
 $string['neverdeletemessages'] = 'Never delete messages';
@@ -97,7 +101,7 @@ $string['nomessages'] = 'No messages yet';
 $string['normalkeepalive'] = 'KeepAlive';
 $string['normalstream'] = 'Stream';
 $string['noscheduledsession'] = 'No scheduled session';
-$string['notallowenter'] = 'You are not allow to enter the chat room.';
+$string['notallowenter'] = 'You are not allowed to enter the chat room.';
 $string['notlogged'] = 'You are not logged in!';
 $string['nopermissiontoseethechatlog'] = 'You don\'t have permission to see the chat logs.';
 $string['oldping'] = 'Disconnect timeout';

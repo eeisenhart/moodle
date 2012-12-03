@@ -37,16 +37,24 @@ require_once($CFG->libdir.'/outputrequirementslib.php');
 /**
  * Invalidate all server and client side caches.
  *
- * This method deletes the phsyical directory that is used to cache the theme
+ * This method deletes the physical directory that is used to cache the theme
  * files used for serving.
- * Because it deletes the main theme cache directoy all themes are reset by
+ * Because it deletes the main theme cache directory all themes are reset by
  * this function.
  */
 function theme_reset_all_caches() {
     global $CFG;
     require_once("$CFG->libdir/filelib.php");
 
-    set_config('themerev', empty($CFG->themerev) ? 1 : $CFG->themerev+1);
+    $next = time();
+    if (isset($CFG->themerev) and $next <= $CFG->themerev and $CFG->themerev - $next < 60*60) {
+        // This resolves problems when reset is requested repeatedly within 1s,
+        // the < 1h condition prevents accidental switching to future dates
+        // because we might not recover from it.
+        $next = $CFG->themerev+1;
+    }
+
+    set_config('themerev', $next); // time is unique even when you reset/switch database
     fulldelete("$CFG->cachedir/theme");
 }
 
@@ -267,6 +275,14 @@ class theme_config {
      */
     public $enablecourseajax = true;
 
+    /**
+     * @var string Determines served document types
+     *  - 'html5' the only officially supported doctype in Moodle
+     *  - 'xhtml5' may be used in development for validation (not intended for production servers!)
+     *  - 'xhtml' XHTML 1.0 Strict for legacy themes only
+     */
+    public $doctype = 'html5';
+
     //==Following properties are not configurable from theme config.php==
 
     /**
@@ -309,6 +325,20 @@ class theme_config {
      * @var array List of parent config objects.
      **/
     protected $parent_configs = array();
+
+    /**
+     * @var bool If set to true then the theme is safe to run through the optimiser (if it is enabled)
+     * If set to false then we know either the theme has already been optimised and the CSS optimiser is not needed
+     * or the theme is not compatible with the CSS optimiser. In both cases even if enabled the CSS optimiser will not
+     * be used with this theme if set to false.
+     */
+    public $supportscssoptimisation = true;
+
+    /**
+     * Used to determine whether we can serve SVG images or not.
+     * @var bool
+     */
+    private $usesvg = null;
 
     /**
      * Load the config.php file for a particular theme, and return an instance
@@ -373,8 +403,8 @@ class theme_config {
         }
 
         $configurable = array('parents', 'sheets', 'parents_exclude_sheets', 'plugins_exclude_sheets', 'javascripts', 'javascripts_footer',
-                              'parents_exclude_javascripts', 'layouts', 'enable_dock', 'enablecourseajax',
-                              'rendererfactory', 'csspostprocess', 'editor_sheets', 'rarrow', 'larrow', 'hidefromselector');
+                              'parents_exclude_javascripts', 'layouts', 'enable_dock', 'enablecourseajax', 'supportscssoptimisation',
+                              'rendererfactory', 'csspostprocess', 'editor_sheets', 'rarrow', 'larrow', 'hidefromselector', 'doctype');
 
         foreach ($config as $key=>$value) {
             if (in_array($key, $configurable)) {
@@ -588,20 +618,34 @@ class theme_config {
 
         $urls = array();
 
+        $svg = $this->use_svg_icons();
+
         if ($rev > -1) {
+            $url = new moodle_url("$CFG->httpswwwroot/theme/styles.php");
             if (check_browser_version('MSIE', 5)) {
                 // We need to split the CSS files for IE
-                $urls[] = new moodle_url($CFG->httpswwwroot.'/theme/styles.php', array('theme'=>$this->name,'rev'=>$rev, 'type'=>'plugins'));
-                $urls[] = new moodle_url($CFG->httpswwwroot.'/theme/styles.php', array('theme'=>$this->name,'rev'=>$rev, 'type'=>'parents'));
-                $urls[] = new moodle_url($CFG->httpswwwroot.'/theme/styles.php', array('theme'=>$this->name,'rev'=>$rev, 'type'=>'theme'));
+                $urls[] = new moodle_url($url, array('theme' => $this->name,'rev' => $rev, 'type' => 'plugins', 'svg' => '0'));
+                $urls[] = new moodle_url($url, array('theme' => $this->name,'rev' => $rev, 'type' => 'parents', 'svg' => '0'));
+                $urls[] = new moodle_url($url, array('theme' => $this->name,'rev' => $rev, 'type' => 'theme', 'svg' => '0'));
             } else {
                 if (!empty($CFG->slasharguments)) {
-                    $url = new moodle_url("$CFG->httpswwwroot/theme/styles.php");
-                    $url->set_slashargument('/'.$this->name.'/'.$rev.'/all', 'noparam', true);
-                    $urls[] = $url;
+                    $slashargs = '/'.$this->name.'/'.$rev.'/all';
+                    if (!$svg) {
+                        // We add a simple /_s to the start of the path.
+                        // The underscore is used to ensure that it isn't a valid theme name.
+                        $slashargs = '/_s'.$slashargs;
+                    }
+                    $url->set_slashargument($slashargs, 'noparam', true);
                 } else {
-                    $urls[] = new moodle_url($CFG->httpswwwroot.'/theme/styles.php', array('theme'=>$this->name,'rev'=>$rev, 'type'=>'all'));
+                    $params = array('theme' => $this->name,'rev' => $rev, 'type' => 'all');
+                    if (!$svg) {
+                        // We add an SVG param so that we know not to serve SVG images.
+                        // We do this because all modern browsers support SVG and this param will one day be removed.
+                        $params['svg'] = '0';
+                    }
+                    $url->params($params);
                 }
+                $urls[] = $url;
             }
         } else {
             // find out the current CSS and cache it now for 5 seconds
@@ -610,28 +654,50 @@ class theme_config {
             if (!defined('THEME_DESIGNER_CACHE_LIFETIME')) {
                 define('THEME_DESIGNER_CACHE_LIFETIME', 4); // this can be also set in config.php
             }
-            $candidatesheet = "$CFG->cachedir/theme/$this->name/designer.ser";
-            if (!file_exists($candidatesheet)) {
-                $css = $this->css_content();
-                check_dir_exists(dirname($candidatesheet));
-                file_put_contents($candidatesheet, serialize($css));
-
-            } else if (filemtime($candidatesheet) > time() - THEME_DESIGNER_CACHE_LIFETIME) {
+            $candidatedir = "$CFG->cachedir/theme/$this->name";
+            if ($svg) {
+                $candidatesheet = "$candidatedir/designer.ser";
+            } else {
+                $candidatesheet = "$candidatedir/designer_nosvg.ser";
+            }
+            $rebuild = true;
+            if (file_exists($candidatesheet) and filemtime($candidatesheet) > time() - THEME_DESIGNER_CACHE_LIFETIME) {
                 if ($css = file_get_contents($candidatesheet)) {
                     $css = unserialize($css);
-                } else {
-                    unlink($candidatesheet);
-                    $css = $this->css_content();
+                    if (is_array($css)) {
+                        $rebuild = false;
+                    }
                 }
+            }
+            if ($rebuild) {
+                // Prepare the CSS optimiser if it is to be used,
+                // please note that it may be very slow and is therefore strongly discouraged in theme designer mode.
+                $optimiser = null;
+                if (!empty($CFG->enablecssoptimiser) && $this->supportscssoptimisation) {
+                    require_once($CFG->dirroot.'/lib/csslib.php');
+                    $optimiser = new css_optimiser;
+                }
+                $css = $this->css_content($optimiser);
 
-            } else {
-                unlink($candidatesheet);
-                $css = $this->css_content();
-                file_put_contents($candidatesheet, serialize($css));
+                // We do not want any errors here because this may fail easily because of the concurrent access.
+                $prevabort = ignore_user_abort(true);
+                check_dir_exists($candidatedir);
+                $tempfile = tempnam($candidatedir, 'tmpdesigner');
+                file_put_contents($tempfile, serialize($css));
+                $reporting = error_reporting(0);
+                chmod($tempfile, $CFG->filepermissions);
+                unlink($candidatesheet); // Do not rely on rename() deleting original, they may decide to change it at any time as usually.
+                rename($tempfile, $candidatesheet);
+                error_reporting($reporting);
+                ignore_user_abort($prevabort);
             }
 
-            $baseurl = $CFG->httpswwwroot.'/theme/styles_debug.php';
-
+            $baseurl = new moodle_url($CFG->httpswwwroot.'/theme/styles_debug.php');
+            if (!$svg) {
+                // We add an SVG param so that we know not to serve SVG images.
+                // We do this because all modern browsers support SVG and this param will one day be removed.
+                $baseurl->param('svg', '0');
+            }
             if (check_browser_version('MSIE', 5)) {
                 // lalala, IE does not allow more than 31 linked CSS files from main document
                 $urls[] = new moodle_url($baseurl, array('theme'=>$this->name, 'type'=>'ie', 'subtype'=>'plugins'));
@@ -731,11 +797,12 @@ class theme_config {
     /**
      * Returns the content of the one huge CSS merged from all style sheets.
      *
+     * @param css_optimiser|null $optimiser A CSS optimiser to use during on the content. Null = don't optimise
      * @return string
      */
-    public function css_content() {
+    public function css_content(css_optimiser $optimiser = null) {
         $files = array_merge($this->css_files(), array('editor'=>$this->editor_css_files()));
-        $css = $this->css_files_get_contents($files, array());
+        $css = $this->css_files_get_contents($files, array(), $optimiser);
         return $css;
     }
 
@@ -747,17 +814,28 @@ class theme_config {
      *
      * @param array|string $file An array of file paths or a single file path
      * @param array $keys An array of previous array keys [recursive addition]
+     * @param css_optimiser|null $optimiser A CSS optimiser to use during on the content. Null = don't optimise
      * @return The converted array or the contents of the single file ($file type)
      */
-    protected function css_files_get_contents($file, array $keys) {
+    protected function css_files_get_contents($file, array $keys, css_optimiser $optimiser = null) {
+        global $CFG;
         if (is_array($file)) {
             foreach ($file as $key=>$f) {
-                $file[$key] = $this->css_files_get_contents($f, array_merge($keys, array($key)));
+                $file[$key] = $this->css_files_get_contents($f, array_merge($keys, array($key)), $optimiser);
             }
             return $file;
         } else {
+            $contents = file_get_contents($file);
+            $contents = $this->post_process($contents);
             $comment = '/** Path: '.implode(' ', $keys).' **/'."\n";
-            return $comment.$this->post_process(file_get_contents($file));
+            $stats = '';
+            if (!is_null($optimiser)) {
+                $contents = $optimiser->process($contents);
+                if (!empty($CFG->cssoptimiserstats)) {
+                    $stats = $optimiser->output_stats_css();
+                }
+            }
+            return $comment.$stats.$contents;
         }
     }
 
@@ -927,6 +1005,7 @@ class theme_config {
         global $CFG;
 
         $params = array('theme'=>$this->name);
+        $svg = $this->use_svg_icons();
 
         if (empty($component) or $component === 'moodle' or $component === 'core') {
             $params['component'] = 'core';
@@ -941,11 +1020,22 @@ class theme_config {
 
         $params['image'] = $imagename;
 
+        $url = new moodle_url("$CFG->httpswwwroot/theme/image.php");
         if (!empty($CFG->slasharguments) and $rev > 0) {
-            $url = new moodle_url("$CFG->httpswwwroot/theme/image.php");
-            $url->set_slashargument('/'.$params['theme'].'/'.$params['component'].'/'.$params['rev'].'/'.$params['image'], 'noparam', true);
+            $path = '/'.$params['theme'].'/'.$params['component'].'/'.$params['rev'].'/'.$params['image'];
+            if (!$svg) {
+                // We add a simple /_s to the start of the path.
+                // The underscore is used to ensure that it isn't a valid theme name.
+                $path = '/_s'.$path;
+            }
+            $url->set_slashargument($path, 'noparam', true);
         } else {
-            $url = new moodle_url("$CFG->httpswwwroot/theme/image.php", $params);
+            if (!$svg) {
+                // We add an SVG param so that we know not to serve SVG images.
+                // We do this because all modern browsers support SVG and this param will one day be removed.
+                $params['svg'] = '0';
+            }
+            $url->params($params);
         }
 
         return $url;
@@ -953,26 +1043,41 @@ class theme_config {
 
     /**
      * Resolves the real image location.
+     *
+     * $svg was introduced as an arg in 2.4. It is important because not all supported browsers support the use of SVG
+     * and we need a way in which to turn it off.
+     * By default SVG won't be used unless asked for. This is done for two reasons:
+     *   1. It ensures that we don't serve svg images unless we really want to. The admin has selected to force them, of the users
+     *      browser supports SVG.
+     *   2. We only serve SVG images from locations we trust. This must NOT include any areas where the image may have been uploaded
+     *      by the user due to security concerns.
+     *
      * @param string $image name of image, may contain relative path
      * @param string $component
+     * @param bool $svg If set to true SVG images will also be looked for.
      * @return string full file path
      */
-    public function resolve_image_location($image, $component) {
+    public function resolve_image_location($image, $component, $svg = false) {
         global $CFG;
 
+        if (!is_bool($svg)) {
+            // If $svg isn't a bool then we need to decide for ourselves.
+            $svg = $this->use_svg_icons();
+        }
+
         if ($component === 'moodle' or $component === 'core' or empty($component)) {
-            if ($imagefile = $this->image_exists("$this->dir/pix_core/$image")) {
+            if ($imagefile = $this->image_exists("$this->dir/pix_core/$image", $svg)) {
                 return $imagefile;
             }
             foreach (array_reverse($this->parent_configs) as $parent_config) { // base first, the immediate parent last
-                if ($imagefile = $this->image_exists("$parent_config->dir/pix_core/$image")) {
+                if ($imagefile = $this->image_exists("$parent_config->dir/pix_core/$image", $svg)) {
                     return $imagefile;
                 }
             }
-            if ($imagefile = $this->image_exists("$CFG->dataroot/pix/$image")) {
+            if ($imagefile = $this->image_exists("$CFG->dataroot/pix/$image", $svg)) {
                 return $imagefile;
             }
-            if ($imagefile = $this->image_exists("$CFG->dirroot/pix/$image")) {
+            if ($imagefile = $this->image_exists("$CFG->dirroot/pix/$image", $svg)) {
                 return $imagefile;
             }
             return null;
@@ -981,11 +1086,11 @@ class theme_config {
             if ($image === 'favicon') {
                 return "$this->dir/pix/favicon.ico";
             }
-            if ($imagefile = $this->image_exists("$this->dir/pix/$image")) {
+            if ($imagefile = $this->image_exists("$this->dir/pix/$image", $svg)) {
                 return $imagefile;
             }
             foreach (array_reverse($this->parent_configs) as $parent_config) { // base first, the immediate parent last
-                if ($imagefile = $this->image_exists("$parent_config->dir/pix/$image")) {
+                if ($imagefile = $this->image_exists("$parent_config->dir/pix/$image", $svg)) {
                     return $imagefile;
                 }
             }
@@ -997,19 +1102,19 @@ class theme_config {
             }
             list($type, $plugin) = explode('_', $component, 2);
 
-            if ($imagefile = $this->image_exists("$this->dir/pix_plugins/$type/$plugin/$image")) {
+            if ($imagefile = $this->image_exists("$this->dir/pix_plugins/$type/$plugin/$image", $svg)) {
                 return $imagefile;
             }
             foreach (array_reverse($this->parent_configs) as $parent_config) { // base first, the immediate parent last
-                if ($imagefile = $this->image_exists("$parent_config->dir/pix_plugins/$type/$plugin/$image")) {
+                if ($imagefile = $this->image_exists("$parent_config->dir/pix_plugins/$type/$plugin/$image", $svg)) {
                     return $imagefile;
                 }
             }
-            if ($imagefile = $this->image_exists("$CFG->dataroot/pix_plugins/$type/$plugin/$image")) {
+            if ($imagefile = $this->image_exists("$CFG->dataroot/pix_plugins/$type/$plugin/$image", $svg)) {
                 return $imagefile;
             }
             $dir = get_plugin_directory($type, $plugin);
-            if ($imagefile = $this->image_exists("$dir/pix/$image")) {
+            if ($imagefile = $this->image_exists("$dir/pix/$image", $svg)) {
                 return $imagefile;
             }
             return null;
@@ -1017,16 +1122,76 @@ class theme_config {
     }
 
     /**
+     * Return true if we should look for SVG images as well.
+     *
+     * @staticvar bool $svg
+     * @return bool
+     */
+    public function use_svg_icons() {
+        global $CFG;
+        if ($this->usesvg === null) {
+            if (!isset($CFG->svgicons) || !is_bool($CFG->svgicons)) {
+                // IE 5 - 8 don't support SVG at all.
+                if (empty($_SERVER['HTTP_USER_AGENT'])) {
+                    // Can't be sure, just say no.
+                    $this->usesvg = false;
+                } else if (check_browser_version('MSIE', 0) and !check_browser_version('MSIE', 9)) {
+                    // IE < 9 doesn't support SVG. Say no.
+                    $this->usesvg = false;
+                } else if (preg_match('#Android +[0-2]\.#', $_SERVER['HTTP_USER_AGENT'])) {
+                    // Android < 3 doesn't support SVG. Say no.
+                    $this->usesvg = false;
+                } else if (check_browser_version('Opera', 0)) {
+                    // Opera 12 still does not support SVG well enough. Say no.
+                    $this->usesvg = false;
+                } else {
+                    // Presumed fine.
+                    $this->usesvg = true;
+                }
+            } else {
+                // Force them on/off depending upon the setting.
+                $this->usesvg = $CFG->svgicons;
+            }
+        }
+        return $this->usesvg;
+    }
+
+    /**
+     * Forces the usesvg setting to either true or false, avoiding any decision making.
+     *
+     * This function should only ever be used when absolutely required, and before any generation of image URL's has occurred.
+     * DO NOT ABUSE THIS FUNCTION... not that you'd want to right ;)
+     *
+     * @param bool $setting True to force the use of svg when available, null otherwise.
+     */
+    public function force_svg_use($setting) {
+        $this->usesvg = (bool)$setting;
+    }
+
+    /**
      * Checks if file with any image extension exists.
      *
+     * The order to these images was adjusted prior to the release of 2.4
+     * At that point the were the following image counts in Moodle core:
+     *
+     *     - png = 667 in pix dirs (1499 total)
+     *     - gif = 385 in pix dirs (606 total)
+     *     - jpg = 62  in pix dirs (74 total)
+     *     - jpeg = 0  in pix dirs (1 total)
+     *
+     * There is work in progress to move towards SVG presently hence that has been prioritiesed.
+     *
      * @param string $filepath
+     * @param bool $svg If set to true SVG images will also be looked for.
      * @return string image name with extension
      */
-    private static function image_exists($filepath) {
-        if (file_exists("$filepath.gif")) {
-            return "$filepath.gif";
+    private static function image_exists($filepath, $svg = false) {
+        if ($svg && file_exists("$filepath.svg")) {
+            return "$filepath.svg";
         } else  if (file_exists("$filepath.png")) {
             return "$filepath.png";
+        } else if (file_exists("$filepath.gif")) {
+            return "$filepath.gif";
         } else  if (file_exists("$filepath.jpg")) {
             return "$filepath.jpg";
         } else  if (file_exists("$filepath.jpeg")) {

@@ -17,8 +17,7 @@
 /**
  * DML layer tests
  *
- * @package    core
- * @subpackage dml
+ * @package    core_dml
  * @category   phpunit
  * @copyright  2008 Nicolas Connault
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -51,19 +50,6 @@ class dml_testcase extends database_driver_testcase {
         $table->setComment("This is a test'n drop table. You can drop it safely");
         return new xmldb_table($tablename);
     }
-
-    protected function enable_debugging() {
-        ob_start(); // hide debug warning
-    }
-
-    protected function get_debugging() {
-        $debuginfo = ob_get_contents();
-        ob_end_clean();
-
-        return $debuginfo;
-    }
-
-    // NOTE: please keep order of test methods here matching the order of moodle_database class methods
 
     function test_diagnose() {
         $DB = $this->tdb;
@@ -311,6 +297,7 @@ class dml_testcase extends database_driver_testcase {
 
     function test_fix_sql_params() {
         $DB = $this->tdb;
+        $prefix = $DB->get_prefix();
 
         $table = $this->get_test_table();
         $tablename = $table->getName();
@@ -318,13 +305,13 @@ class dml_testcase extends database_driver_testcase {
         // Correct table placeholder substitution
         $sql = "SELECT * FROM {{$tablename}}";
         $sqlarray = $DB->fix_sql_params($sql);
-        $this->assertEquals("SELECT * FROM {$DB->get_prefix()}".$tablename, $sqlarray[0]);
+        $this->assertEquals("SELECT * FROM {$prefix}".$tablename, $sqlarray[0]);
 
         // Conversions of all param types
         $sql = array();
-        $sql[SQL_PARAMS_NAMED]  = "SELECT * FROM {$DB->get_prefix()}testtable WHERE name = :param1, course = :param2";
-        $sql[SQL_PARAMS_QM]     = "SELECT * FROM {$DB->get_prefix()}testtable WHERE name = ?, course = ?";
-        $sql[SQL_PARAMS_DOLLAR] = "SELECT * FROM {$DB->get_prefix()}testtable WHERE name = \$1, course = \$2";
+        $sql[SQL_PARAMS_NAMED]  = "SELECT * FROM {$prefix}testtable WHERE name = :param1, course = :param2";
+        $sql[SQL_PARAMS_QM]     = "SELECT * FROM {$prefix}testtable WHERE name = ?, course = ?";
+        $sql[SQL_PARAMS_DOLLAR] = "SELECT * FROM {$prefix}testtable WHERE name = \$1, course = \$2";
 
         $params = array();
         $params[SQL_PARAMS_NAMED]  = array('param1'=>'first record', 'param2'=>1);
@@ -690,6 +677,17 @@ class dml_testcase extends database_driver_testcase {
         $table->add_field('negativedfltint', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '-1');
         $table->add_field('negativedfltnumber', XMLDB_TYPE_NUMBER, '10', null, XMLDB_NOTNULL, null, '-2');
         $table->add_field('negativedfltfloat', XMLDB_TYPE_FLOAT, '10', null, XMLDB_NOTNULL, null, '-3');
+        $table->add_field('someint1', XMLDB_TYPE_INTEGER, '1', null, null, null, '0');
+        $table->add_field('someint2', XMLDB_TYPE_INTEGER, '2', null, null, null, '0');
+        $table->add_field('someint3', XMLDB_TYPE_INTEGER, '3', null, null, null, '0');
+        $table->add_field('someint4', XMLDB_TYPE_INTEGER, '4', null, null, null, '0');
+        $table->add_field('someint5', XMLDB_TYPE_INTEGER, '5', null, null, null, '0');
+        $table->add_field('someint6', XMLDB_TYPE_INTEGER, '6', null, null, null, '0');
+        $table->add_field('someint7', XMLDB_TYPE_INTEGER, '7', null, null, null, '0');
+        $table->add_field('someint8', XMLDB_TYPE_INTEGER, '8', null, null, null, '0');
+        $table->add_field('someint9', XMLDB_TYPE_INTEGER, '9', null, null, null, '0');
+        $table->add_field('someint10', XMLDB_TYPE_INTEGER, '10', null, null, null, '0');
+        $table->add_field('someint18', XMLDB_TYPE_INTEGER, '18', null, null, null, '0');
         $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
         $dbman->create_table($table);
 
@@ -710,6 +708,15 @@ class dml_testcase extends database_driver_testcase {
         $this->assertTrue($field->has_default);
         $this->assertEquals(0, $field->default_value);
         $this->assertTrue($field->not_null);
+
+        for($i=1;$i<=10;$i++) {
+            $field = $columns['someint'.$i];
+            $this->assertEquals('I', $field->meta_type);
+            $this->assertGreaterThanOrEqual($i, $field->max_length);
+        }
+        $field = $columns['someint18'];
+        $this->assertEquals('I', $field->meta_type);
+        $this->assertGreaterThanOrEqual(18, $field->max_length);
 
         $field = $columns['name'];
         $this->assertEquals('C', $field->meta_type);
@@ -777,7 +784,7 @@ class dml_testcase extends database_driver_testcase {
                 $next_field  = next($fields);
             }
 
-            $this->assertEquals($next_column->name, $next_field->name);
+            $this->assertEquals($next_column->name, $next_field->getName());
         }
 
         // Test get_columns for non-existing table returns empty array. MDL-30147
@@ -924,12 +931,12 @@ class dml_testcase extends database_driver_testcase {
         $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
         $dbman->create_table($table);
 
-        $data = array(array('id' => 1, 'course' => 3, 'name' => 'record1', 'onetext'=>'abc'),
-            array('id' => 2, 'course' => 3, 'name' => 'record2', 'onetext'=>'abcd'),
-            array('id' => 3, 'course' => 5, 'name' => 'record3', 'onetext'=>'abcde'));
+        $data = array(array('course' => 3, 'name' => 'record1', 'onetext'=>'abc'),
+            array('course' => 3, 'name' => 'record2', 'onetext'=>'abcd'),
+            array('course' => 5, 'name' => 'record3', 'onetext'=>'abcde'));
 
-        foreach ($data as $record) {
-            $DB->insert_record($tablename, $record);
+        foreach ($data as $key=>$record) {
+            $data[$key]['id'] = $DB->insert_record($tablename, $record);
         }
 
         // standard recordset iteration
@@ -984,18 +991,83 @@ class dml_testcase extends database_driver_testcase {
         $conditions = array('onetext' => '1');
         try {
             $rs = $DB->get_recordset($tablename, $conditions);
-            if (debugging()) {
-                // only in debug mode - hopefully all devs test code in debug mode...
-                $this->fail('An Exception is missing, expected due to equating of text fields');
-            }
+            $this->fail('An Exception is missing, expected due to equating of text fields');
         } catch (exception $e) {
             $this->assertTrue($e instanceof dml_exception);
             $this->assertEquals($e->errorcode, 'textconditionsnotallowed');
         }
 
+        // Test nested iteration.
+        $rs1 = $DB->get_recordset($tablename);
+        $i = 0;
+        foreach($rs1 as $record1) {
+            $rs2 = $DB->get_recordset($tablename);
+            $i++;
+            $j = 0;
+            foreach($rs2 as $record2) {
+                $j++;
+            }
+            $rs2->close();
+            $this->assertEquals($j, count($data));
+        }
+        $rs1->close();
+        $this->assertEquals($i, count($data));
+
         // notes:
         //  * limits are tested in test_get_recordset_sql()
         //  * where_clause() is used internally and is tested in test_get_records()
+    }
+
+    public function test_get_recordset_static() {
+        $DB = $this->tdb;
+        $dbman = $DB->get_manager();
+
+        $table = $this->get_test_table();
+        $tablename = $table->getName();
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('course', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $dbman->create_table($table);
+
+        $DB->insert_record($tablename, array('course' => 1));
+        $DB->insert_record($tablename, array('course' => 2));
+        $DB->insert_record($tablename, array('course' => 3));
+        $DB->insert_record($tablename, array('course' => 4));
+
+        $rs = $DB->get_recordset($tablename, array(), 'id');
+
+        $DB->set_field($tablename, 'course', 666, array('course'=>1));
+        $DB->delete_records($tablename, array('course'=>2));
+
+        $i = 0;
+        foreach($rs as $record) {
+            $i++;
+            $this->assertEquals($i, $record->course);
+        }
+        $rs->close();
+        $this->assertEquals(4, $i);
+
+        // Now repeat with limits because it may use different code.
+        $DB->delete_records($tablename, array());
+
+        $DB->insert_record($tablename, array('course' => 1));
+        $DB->insert_record($tablename, array('course' => 2));
+        $DB->insert_record($tablename, array('course' => 3));
+        $DB->insert_record($tablename, array('course' => 4));
+
+        $rs = $DB->get_recordset($tablename, array(), 'id', '*', 0, 3);
+
+        $DB->set_field($tablename, 'course', 666, array('course'=>1));
+        $DB->delete_records($tablename, array('course'=>2));
+
+        $i = 0;
+        foreach($rs as $record) {
+            $i++;
+            $this->assertEquals($i, $record->course);
+        }
+        $rs->close();
+        $this->assertEquals(3, $i);
     }
 
     public function test_get_recordset_iterator_keys() {
@@ -1012,11 +1084,11 @@ class dml_testcase extends database_driver_testcase {
         $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
         $dbman->create_table($table);
 
-        $data = array(array('id'=> 1, 'course' => 3, 'name' => 'record1'),
-            array('id'=> 2, 'course' => 3, 'name' => 'record2'),
-            array('id'=> 3, 'course' => 5, 'name' => 'record3'));
-        foreach ($data as $record) {
-            $DB->insert_record($tablename, $record);
+        $data = array(array('course' => 3, 'name' => 'record1'),
+            array('course' => 3, 'name' => 'record2'),
+            array('course' => 5, 'name' => 'record3'));
+        foreach ($data as $key=>$record) {
+            $data[$key]['id'] = $DB->insert_record($tablename, $record);
         }
 
         // Test repeated numeric keys are returned ok
@@ -1071,7 +1143,7 @@ class dml_testcase extends database_driver_testcase {
         $tablename = $table->getName();
 
         $table->add_field('id', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
-        $table->add_field('course', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, null, '0');
+        $table->add_field('course', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, null, null, '0');
         $table->add_index('course', XMLDB_INDEX_NOTUNIQUE, array('course'));
         $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
         $dbman->create_table($table);
@@ -1080,9 +1152,11 @@ class dml_testcase extends database_driver_testcase {
         $DB->insert_record($tablename, array('course' => 3));
         $DB->insert_record($tablename, array('course' => 5));
         $DB->insert_record($tablename, array('course' => 2));
+        $DB->insert_record($tablename, array('course' => null));
+        $DB->insert_record($tablename, array('course' => 1));
+        $DB->insert_record($tablename, array('course' => 0));
 
         $rs = $DB->get_recordset_list($tablename, 'course', array(3, 2));
-
         $counter = 0;
         foreach ($rs as $record) {
             $counter++;
@@ -1090,7 +1164,55 @@ class dml_testcase extends database_driver_testcase {
         $this->assertEquals(3, $counter);
         $rs->close();
 
-        $rs = $DB->get_recordset_list($tablename, 'course',array()); /// Must return 0 rows without conditions. MDL-17645
+        $rs = $DB->get_recordset_list($tablename, 'course', array(3));
+        $counter = 0;
+        foreach ($rs as $record) {
+            $counter++;
+        }
+        $this->assertEquals(2, $counter);
+        $rs->close();
+
+        $rs = $DB->get_recordset_list($tablename, 'course', array(null));
+        $counter = 0;
+        foreach ($rs as $record) {
+            $counter++;
+        }
+        $this->assertEquals(1, $counter);
+        $rs->close();
+
+        $rs = $DB->get_recordset_list($tablename, 'course', array(6, null));
+        $counter = 0;
+        foreach ($rs as $record) {
+            $counter++;
+        }
+        $this->assertEquals(1, $counter);
+        $rs->close();
+
+        $rs = $DB->get_recordset_list($tablename, 'course', array(null, 5, 5, 5));
+        $counter = 0;
+        foreach ($rs as $record) {
+            $counter++;
+        }
+        $this->assertEquals(2, $counter);
+        $rs->close();
+
+        $rs = $DB->get_recordset_list($tablename, 'course', array(true));
+        $counter = 0;
+        foreach ($rs as $record) {
+            $counter++;
+        }
+        $this->assertEquals(1, $counter);
+        $rs->close();
+
+        $rs = $DB->get_recordset_list($tablename, 'course', array(false));
+        $counter = 0;
+        foreach ($rs as $record) {
+            $counter++;
+        }
+        $this->assertEquals(1, $counter);
+        $rs->close();
+
+        $rs = $DB->get_recordset_list($tablename, 'course',array()); // Must return 0 rows without conditions. MDL-17645
 
         $counter = 0;
         foreach ($rs as $record) {
@@ -1182,6 +1304,36 @@ class dml_testcase extends database_driver_testcase {
         $this->assertEquals($inskey7, end($records)->id);
 
         // note: fetching nulls, empties, LOBs already tested by test_insert_record() no needed here
+    }
+
+    public function test_export_table_recordset() {
+        $DB = $this->tdb;
+        $dbman = $DB->get_manager();
+
+        $table = $this->get_test_table();
+        $tablename = $table->getName();
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('course', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $dbman->create_table($table);
+
+        $ids = array();
+        $ids[] = $DB->insert_record($tablename, array('course' => 3));
+        $ids[] = $DB->insert_record($tablename, array('course' => 5));
+        $ids[] = $DB->insert_record($tablename, array('course' => 4));
+        $ids[] = $DB->insert_record($tablename, array('course' => 3));
+        $ids[] = $DB->insert_record($tablename, array('course' => 2));
+        $ids[] = $DB->insert_record($tablename, array('course' => 1));
+        $ids[] = $DB->insert_record($tablename, array('course' => 0));
+
+        $rs = $DB->export_table_recordset($tablename);
+        $rids = array();
+        foreach ($rs as $record) {
+            $rids[] = $record->id;
+        }
+        $rs->close();
+        $this->assertEquals($ids, $rids, '', 0, 0, true);
     }
 
     public function test_get_records() {
@@ -1316,13 +1468,15 @@ class dml_testcase extends database_driver_testcase {
         $this->assertEquals(2, next($records)->id);
         $this->assertEquals(4, next($records)->id);
 
-        $this->assertSame(array(), $records = $DB->get_records_list($tablename, 'course', array())); /// Must return 0 rows without conditions. MDL-17645
+        $this->assertSame(array(), $records = $DB->get_records_list($tablename, 'course', array())); // Must return 0 rows without conditions. MDL-17645
         $this->assertEquals(0, count($records));
 
         // note: delegate limits testing to test_get_records_sql()
     }
 
     public function test_get_records_sql() {
+        global $CFG;
+
         $DB = $this->tdb;
         $dbman = $DB->get_manager();
 
@@ -1361,10 +1515,14 @@ class dml_testcase extends database_driver_testcase {
         $this->assertEquals($inskey4, next($records)->id);
 
         // Awful test, requires debug enabled and sent to browser. Let's do that and restore after test
-        $this->enable_debugging();
         $records = $DB->get_records_sql("SELECT course AS id, course AS course FROM {{$tablename}}", null);
-        $this->assertFalse($this->get_debugging() === '');
+        $this->assertDebuggingCalled();
         $this->assertEquals(6, count($records));
+        $CFG->debug = DEBUG_MINIMAL;
+        $records = $DB->get_records_sql("SELECT course AS id, course AS course FROM {{$tablename}}", null);
+        $this->assertDebuggingNotCalled();
+        $this->assertEquals(6, count($records));
+        $CFG->debug = DEBUG_DEVELOPER;
 
         // negative limits = no limits
         $records = $DB->get_records_sql("SELECT * FROM {{$tablename}} ORDER BY id", null, -1, -1);
@@ -1576,6 +1734,8 @@ class dml_testcase extends database_driver_testcase {
     }
 
     public function test_get_record_sql() {
+        global $CFG;
+
         $DB = $this->tdb;
         $dbman = $DB->get_manager();
 
@@ -1612,9 +1772,12 @@ class dml_testcase extends database_driver_testcase {
             $this->assertTrue(true);
         }
 
-        $this->enable_debugging();
         $this->assertNotEmpty($DB->get_record_sql("SELECT * FROM {{$tablename}}", array(), IGNORE_MISSING));
-        $this->assertFalse($this->get_debugging() === '');
+        $this->assertDebuggingCalled();
+        $CFG->debug = DEBUG_MINIMAL;
+        $this->assertNotEmpty($DB->get_record_sql("SELECT * FROM {{$tablename}}", array(), IGNORE_MISSING));
+        $this->assertDebuggingNotCalled();
+        $CFG->debug = DEBUG_DEVELOPER;
 
         // multiple matches ignored
         $this->assertNotEmpty($DB->get_record_sql("SELECT * FROM {{$tablename}}", array(), IGNORE_MULTIPLE));
@@ -1656,13 +1819,11 @@ class dml_testcase extends database_driver_testcase {
             $this->assertTrue(true);
         }
 
-        $this->enable_debugging();
         $this->assertEquals(5, $DB->get_field($tablename, 'course', array('course' => 5), IGNORE_MULTIPLE));
-        $this->assertSame($this->get_debugging(), '');
+        $this->assertDebuggingNotCalled();
 
-        $this->enable_debugging();
         $this->assertEquals(5, $DB->get_field($tablename, 'course', array('course' => 5), IGNORE_MISSING));
-        $this->assertFalse($this->get_debugging() === '');
+        $this->assertDebuggingCalled();
 
         // test for exception throwing on text conditions being compared. (MDL-24863, unwanted auto conversion of param to int)
         $conditions = array('onetext' => '1');
@@ -2078,6 +2239,34 @@ class dml_testcase extends database_driver_testcase {
         $this->assertEquals(1e-300, $DB->get_field($tablename, 'onetext', array('id' => $id)));
         $id = $DB->insert_record($tablename, array('onetext' => 1e300));
         $this->assertEquals(1e300, $DB->get_field($tablename, 'onetext', array('id' => $id)));
+
+        // Test that inserting data violating one unique key leads to error.
+        // Empty the table completely.
+        $this->assertTrue($DB->delete_records($tablename));
+
+        // Add one unique constraint (index).
+        $key = new xmldb_key('testuk', XMLDB_KEY_UNIQUE, array('course', 'oneint'));
+        $dbman->add_key($table, $key);
+
+        // Let's insert one record violating the constraint multiple times.
+        $record = (object)array('course' => 1, 'oneint' => 1);
+        $this->assertTrue($DB->insert_record($tablename, $record, false)); // insert 1st. No problem expected.
+
+        // Re-insert same record, not returning id. dml_exception expected.
+        try {
+            $DB->insert_record($tablename, $record, false);
+            $this->fail("Expecting an exception, none occurred");
+        } catch (exception $e) {
+            $this->assertTrue($e instanceof dml_exception);
+        }
+
+        // Re-insert same record, returning id. dml_exception expected.
+        try {
+            $DB->insert_record($tablename, $record, true);
+            $this->fail("Expecting an exception, none occurred");
+        } catch (exception $e) {
+            $this->assertTrue($e instanceof dml_exception);
+        }
     }
 
     public function test_import_record() {
@@ -2739,13 +2928,13 @@ class dml_testcase extends database_driver_testcase {
         $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
         $dbman->create_table($table);
 
-        $this->assertEquals(0, $DB->count_records($tablename));
+        $this->assertSame(0, $DB->count_records($tablename));
 
         $DB->insert_record($tablename, array('course' => 3));
         $DB->insert_record($tablename, array('course' => 4));
         $DB->insert_record($tablename, array('course' => 5));
 
-        $this->assertEquals(3, $DB->count_records($tablename));
+        $this->assertSame(3, $DB->count_records($tablename));
 
         // test for exception throwing on text conditions being compared. (MDL-24863, unwanted auto conversion of param to int)
         $conditions = array('onetext' => '1');
@@ -2774,13 +2963,13 @@ class dml_testcase extends database_driver_testcase {
         $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
         $dbman->create_table($table);
 
-        $this->assertEquals(0, $DB->count_records($tablename));
+        $this->assertSame(0, $DB->count_records($tablename));
 
         $DB->insert_record($tablename, array('course' => 3));
         $DB->insert_record($tablename, array('course' => 4));
         $DB->insert_record($tablename, array('course' => 5));
 
-        $this->assertEquals(2, $DB->count_records_select($tablename, 'course > ?', array(3)));
+        $this->assertSame(2, $DB->count_records_select($tablename, 'course > ?', array(3)));
     }
 
     public function test_count_records_sql() {
@@ -2792,16 +2981,32 @@ class dml_testcase extends database_driver_testcase {
 
         $table->add_field('id', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
         $table->add_field('course', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, null, '0');
+        $table->add_field('onechar', XMLDB_TYPE_CHAR, '100', null, null, null);
         $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
         $dbman->create_table($table);
 
-        $this->assertEquals(0, $DB->count_records($tablename));
+        $this->assertSame(0, $DB->count_records($tablename));
 
-        $DB->insert_record($tablename, array('course' => 3));
-        $DB->insert_record($tablename, array('course' => 4));
-        $DB->insert_record($tablename, array('course' => 5));
+        $DB->insert_record($tablename, array('course' => 3, 'onechar' => 'a'));
+        $DB->insert_record($tablename, array('course' => 4, 'onechar' => 'b'));
+        $DB->insert_record($tablename, array('course' => 5, 'onechar' => 'c'));
 
-        $this->assertEquals(2, $DB->count_records_sql("SELECT COUNT(*) FROM {{$tablename}} WHERE course > ?", array(3)));
+        $this->assertSame(2, $DB->count_records_sql("SELECT COUNT(*) FROM {{$tablename}} WHERE course > ?", array(3)));
+
+        // test invalid use
+        try {
+            $DB->count_records_sql("SELECT onechar FROM {{$tablename}} WHERE course = ?", array(3));
+            $this->fail('Exception expected when non-number field used in count_records_sql');
+        } catch (exception $e) {
+            $this->assertInstanceOf('coding_exception', $e);
+        }
+
+        try {
+            $DB->count_records_sql("SELECT course FROM {{$tablename}} WHERE 1 = 2");
+            $this->fail('Exception expected when non-number field used in count_records_sql');
+        } catch (exception $e) {
+            $this->assertInstanceOf('coding_exception', $e);
+        }
     }
 
     public function test_record_exists() {
@@ -3042,7 +3247,7 @@ class dml_testcase extends database_driver_testcase {
         $this->assertTrue($DB->delete_records_list($tablename, 'course', array(2, 3)));
         $this->assertEquals(1, $DB->count_records($tablename));
 
-        $this->assertTrue($DB->delete_records_list($tablename, 'course', array())); /// Must delete 0 rows without conditions. MDL-17645
+        $this->assertTrue($DB->delete_records_list($tablename, 'course', array())); // Must delete 0 rows without conditions. MDL-17645
         $this->assertEquals(1, $DB->count_records($tablename));
     }
 
@@ -3532,13 +3737,13 @@ class dml_testcase extends database_driver_testcase {
     function test_coalesce() {
         $DB = $this->tdb;
 
-        // Testing not-null ocurrences, return 1st
+        // Testing not-null occurrences, return 1st
         $sql = "SELECT COALESCE('returnthis', 'orthis', 'orwhynotthis') AS test" . $DB->sql_null_from_clause();
         $this->assertEquals('returnthis', $DB->get_field_sql($sql, array()));
         $sql = "SELECT COALESCE(:paramvalue, 'orthis', 'orwhynotthis') AS test" . $DB->sql_null_from_clause();
         $this->assertEquals('returnthis', $DB->get_field_sql($sql, array('paramvalue' => 'returnthis')));
 
-        // Testing null ocurrences, return 2nd
+        // Testing null occurrences, return 2nd
         $sql = "SELECT COALESCE(null, 'returnthis', 'orthis') AS test" . $DB->sql_null_from_clause();
         $this->assertEquals('returnthis', $DB->get_field_sql($sql, array()));
         $sql = "SELECT COALESCE(:paramvalue, 'returnthis', 'orthis') AS test" . $DB->sql_null_from_clause();
@@ -3546,7 +3751,7 @@ class dml_testcase extends database_driver_testcase {
         $sql = "SELECT COALESCE(null, :paramvalue, 'orthis') AS test" . $DB->sql_null_from_clause();
         $this->assertEquals('returnthis', $DB->get_field_sql($sql, array('paramvalue' => 'returnthis')));
 
-        // Testing null ocurrences, return 3rd
+        // Testing null occurrences, return 3rd
         $sql = "SELECT COALESCE(null, null, 'returnthis') AS test" . $DB->sql_null_from_clause();
         $this->assertEquals('returnthis', $DB->get_field_sql($sql, array()));
         $sql = "SELECT COALESCE(null, :paramvalue, 'returnthis') AS test" . $DB->sql_null_from_clause();
@@ -3554,7 +3759,7 @@ class dml_testcase extends database_driver_testcase {
         $sql = "SELECT COALESCE(null, null, :paramvalue) AS test" . $DB->sql_null_from_clause();
         $this->assertEquals('returnthis', $DB->get_field_sql($sql, array('paramvalue' => 'returnthis')));
 
-        // Testing all null ocurrences, return null
+        // Testing all null occurrences, return null
         // Note: under mssql, if all elements are nulls, at least one must be a "typed" null, hence
         // we cannot test this in a cross-db way easily, so next 2 tests are using
         // different queries depending of the DB family
@@ -3575,7 +3780,7 @@ class dml_testcase extends database_driver_testcase {
         $DB = $this->tdb;
         $dbman = $DB->get_manager();
 
-        /// Testing all sort of values
+        // Testing all sort of values
         $sql = "SELECT ".$DB->sql_concat("?", "?", "?")." AS fullname ". $DB->sql_null_from_clause();
         // string, some unicode chars
         $params = array('name', 'áéíóú', 'name3');
@@ -3593,7 +3798,7 @@ class dml_testcase extends database_driver_testcase {
         $params = array(123.45, null, 'test');
         $this->assertNull($DB->get_field_sql($sql, $params), 'ANSI behaviour: Concatenating NULL must return NULL - But in Oracle :-(. [%s]'); // Concatenate NULL with anything result = NULL
 
-        /// Testing fieldnames + values and also integer fieldnames
+        // Testing fieldnames + values and also integer fieldnames
         $table = $this->get_test_table();
         $tablename = $table->getName();
 
@@ -3929,6 +4134,22 @@ class dml_testcase extends database_driver_testcase {
         $records = $DB->get_records_sql($sql, null);
         $this->assertEquals($result, $records);
 
+        // Test CASE expressions in the ORDER BY clause - used by MDL-34657.
+        $sql = "SELECT id, course, name
+                  FROM {{$tablename}}
+              ORDER BY CASE WHEN (course = 5 OR name  = 'xyz') THEN 0 ELSE 1 END, name, course";
+        // First, records matching the course = 5 OR name = 'xyz', then the rest. Each
+        // group ordered by name and course.
+        $result = array(
+            3 => (object)array('id' => 3, 'course' => 5, 'name' => 'def'),
+            1 => (object)array('id' => 1, 'course' => 3, 'name' => 'xyz'),
+            4 => (object)array('id' => 4, 'course' => 2, 'name' => 'abc'),
+            2 => (object)array('id' => 2, 'course' => 3, 'name' => 'abc'));
+        $records = $DB->get_records_sql($sql, null);
+        $this->assertEquals($result, $records);
+        // Verify also array keys, order is important in this test.
+        $this->assertEquals(array_keys($result), array_keys($records));
+
         // test limits in queries with DISTINCT/ALL clauses and multiple whitespace. MDL-25268
         $sql = "SELECT   DISTINCT   course
                   FROM {{$tablename}}
@@ -3999,6 +4220,89 @@ class dml_testcase extends database_driver_testcase {
         $this->assertEquals(1, $DB->count_records($tablename));
         $transaction->allow_commit();
         $this->assertEquals(1, $DB->count_records($tablename));
+    }
+
+    function test_transaction_ignore_error_trouble() {
+        $DB = $this->tdb;
+        $dbman = $DB->get_manager();
+
+        $table = $this->get_test_table();
+        $tablename = $table->getName();
+
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('course', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $table->add_index('course', XMLDB_INDEX_UNIQUE, array('course'));
+        $dbman->create_table($table);
+
+        // Test error on SQL_QUERY_INSERT.
+        $transaction = $DB->start_delegated_transaction();
+        $this->assertEquals(0, $DB->count_records($tablename));
+        $DB->insert_record($tablename, (object)array('course'=>1));
+        $this->assertEquals(1, $DB->count_records($tablename));
+        try {
+            $DB->insert_record($tablename, (object)array('course'=>1));
+        } catch (Exception $e) {
+            // This must be ignored and it must not roll back the whole transaction.
+        }
+        $DB->insert_record($tablename, (object)array('course'=>2));
+        $this->assertEquals(2, $DB->count_records($tablename));
+        $transaction->allow_commit();
+        $this->assertEquals(2, $DB->count_records($tablename));
+        $this->assertFalse($DB->is_transaction_started());
+
+        // Test error on SQL_QUERY_SELECT.
+        $DB->delete_records($tablename);
+        $transaction = $DB->start_delegated_transaction();
+        $this->assertEquals(0, $DB->count_records($tablename));
+        $DB->insert_record($tablename, (object)array('course'=>1));
+        $this->assertEquals(1, $DB->count_records($tablename));
+        try {
+            $DB->get_records_sql('s e l e c t');
+        } catch (Exception $e) {
+            // This must be ignored and it must not roll back the whole transaction.
+        }
+        $DB->insert_record($tablename, (object)array('course'=>2));
+        $this->assertEquals(2, $DB->count_records($tablename));
+        $transaction->allow_commit();
+        $this->assertEquals(2, $DB->count_records($tablename));
+        $this->assertFalse($DB->is_transaction_started());
+
+        // Test error on structure SQL_QUERY_UPDATE.
+        $DB->delete_records($tablename);
+        $transaction = $DB->start_delegated_transaction();
+        $this->assertEquals(0, $DB->count_records($tablename));
+        $DB->insert_record($tablename, (object)array('course'=>1));
+        $this->assertEquals(1, $DB->count_records($tablename));
+        try {
+            $DB->execute('xxxx');
+        } catch (Exception $e) {
+            // This must be ignored and it must not roll back the whole transaction.
+        }
+        $DB->insert_record($tablename, (object)array('course'=>2));
+        $this->assertEquals(2, $DB->count_records($tablename));
+        $transaction->allow_commit();
+        $this->assertEquals(2, $DB->count_records($tablename));
+        $this->assertFalse($DB->is_transaction_started());
+
+        // Test error on structure SQL_QUERY_STRUCTURE.
+        $DB->delete_records($tablename);
+        $transaction = $DB->start_delegated_transaction();
+        $this->assertEquals(0, $DB->count_records($tablename));
+        $DB->insert_record($tablename, (object)array('course'=>1));
+        $this->assertEquals(1, $DB->count_records($tablename));
+        try {
+            $DB->change_database_structure('xxxx');
+        } catch (Exception $e) {
+            // This must be ignored and it must not roll back the whole transaction.
+        }
+        $DB->insert_record($tablename, (object)array('course'=>2));
+        $this->assertEquals(2, $DB->count_records($tablename));
+        $transaction->allow_commit();
+        $this->assertEquals(2, $DB->count_records($tablename));
+        $this->assertFalse($DB->is_transaction_started());
+
+        // NOTE: SQL_QUERY_STRUCTURE is intentionally not tested here because it should never fail.
     }
 
     function test_onelevel_rollback() {
@@ -4103,6 +4407,43 @@ class dml_testcase extends database_driver_testcase {
         $this->assertEquals(0, $DB->count_records($tablename)); // finally rolled back
 
         $DB->delete_records($tablename);
+
+        // Test interactions of recordset and transactions - this causes problems in SQL Server.
+        $table2 = $this->get_test_table('2');
+        $tablename2 = $table2->getName();
+
+        $table2->add_field('id', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table2->add_field('course', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, null, '0');
+        $table2->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $dbman->create_table($table2);
+
+        $DB->insert_record($tablename, array('course'=>1));
+        $DB->insert_record($tablename, array('course'=>2));
+        $DB->insert_record($tablename, array('course'=>3));
+
+        $DB->insert_record($tablename2, array('course'=>5));
+        $DB->insert_record($tablename2, array('course'=>6));
+        $DB->insert_record($tablename2, array('course'=>7));
+        $DB->insert_record($tablename2, array('course'=>8));
+
+        $rs1 = $DB->get_recordset($tablename);
+        $i = 0;
+        foreach ($rs1 as $record1) {
+            $i++;
+            $rs2 = $DB->get_recordset($tablename2);
+            $j = 0;
+            foreach ($rs2 as $record2) {
+                $t = $DB->start_delegated_transaction();
+                $DB->set_field($tablename, 'course', $record1->course+1, array('id'=>$record1->id));
+                $DB->set_field($tablename2, 'course', $record2->course+1, array('id'=>$record2->id));
+                $t->allow_commit();
+                $j++;
+            }
+            $rs2->close();
+            $this->assertEquals(4, $j);
+        }
+        $rs1->close();
+        $this->assertEquals(3, $i);
     }
 
     function test_transactions_forbidden() {
@@ -4300,7 +4641,7 @@ class dml_testcase extends database_driver_testcase {
         $DB2 = moodle_database::get_driver_instance($cfg->dbtype, $cfg->dblibrary);
         $DB2->connect($cfg->dbhost, $cfg->dbuser, $cfg->dbpass, $cfg->dbname, $cfg->prefix, $cfg->dboptions);
 
-        // Testing that acquiring a lock efectively locks
+        // Testing that acquiring a lock effectively locks
         // Get a session lock on connection1
         $rowid = rand(100, 200);
         $timeout = 1;
@@ -4309,14 +4650,14 @@ class dml_testcase extends database_driver_testcase {
         // Try to get the same session lock on connection2
         try {
             $DB2->get_session_lock($rowid, $timeout);
-            $DB2->release_session_lock($rowid); // Should not be excuted, but here for safety
+            $DB2->release_session_lock($rowid); // Should not be executed, but here for safety
             $this->fail('An Exception is missing, expected due to session lock acquired.');
         } catch (exception $e) {
             $this->assertTrue($e instanceof dml_sessionwait_exception);
             $DB->release_session_lock($rowid); // Release lock on connection1
         }
 
-        // Testing that releasing a lock efectively frees
+        // Testing that releasing a lock effectively frees
         // Get a session lock on connection1
         $rowid = rand(100, 200);
         $timeout = 1;
@@ -4418,6 +4759,9 @@ class dml_testcase extends database_driver_testcase {
         $DB->get_fieldset_sql("SELECT id FROM {{$tablename}} WHERE course = :select", array('select'=>1));
         $DB->set_field_select($tablename, 'course', '1', "id = :select", array('select'=>1));
         $DB->delete_records_select($tablename, "id = :select", array('select'=>1));
+
+        // if we get here test passed ok
+        $this->assertTrue(true);
     }
 
     public function test_limits_and_offsets() {
@@ -4585,7 +4929,7 @@ class moodle_database_for_testing extends moodle_database {
 
 
 /**
- * Dumb test class with toString() returrning 1.
+ * Dumb test class with toString() returning 1.
  */
 class dml_test_object_one {
     public function __toString() {

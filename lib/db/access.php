@@ -574,6 +574,15 @@ $capabilities = array(
         )
     ),
 
+    // Can the user ignore the setting userquota?
+    // The permissions are cloned from ignorefilesizelimits as it was partly used for that purpose.
+    'moodle/user:ignoreuserquota' => array(
+        'riskbitmap' => RISK_SPAM,
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'clonepermissionsfrom' => 'moodle/course:ignorefilesizelimits'
+    ),
+
     // can the user manage the system default dashboard page?
     'moodle/my:configsyspages' => array(
 
@@ -854,6 +863,14 @@ $capabilities = array(
         )
     ),
 
+    'moodle/course:ignorefilesizelimits' => array(
+
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => array(
+        )
+    ),
+
     'moodle/course:manageactivities' => array(
 
         'riskbitmask' => RISK_XSS,
@@ -969,6 +986,14 @@ $capabilities = array(
         'archetypes' => array(
             'manager' => CAP_ALLOW
         )
+    ),
+
+    'moodle/course:isincompletionreports' => array(
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => array(
+            'student' => CAP_ALLOW,
+        ),
     ),
 
     'moodle/course:viewscales' => array(
@@ -1419,6 +1444,17 @@ $capabilities = array(
         )
     ),
 
+    'moodle/course:movesections' => array(
+
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => array(
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW
+        ),
+        'clonepermissionsfrom' => 'moodle/course:update'
+    ),
+
     'moodle/site:mnetlogintoremote' => array(
 
         'captype' => 'read',
@@ -1650,6 +1686,17 @@ $capabilities = array(
         )
     ),
 
+    'moodle/tag:flag' => array(
+        'riskbitmask' => RISK_SPAM,
+
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes' => array(
+            'manager' => CAP_ALLOW,
+            'user' => CAP_ALLOW
+        )
+    ),
+
     'moodle/tag:editblocks' => array(
         'captype' => 'write',
         'contextlevel' => CONTEXT_SYSTEM,
@@ -1679,6 +1726,7 @@ $capabilities = array(
         'contextlevel' => CONTEXT_BLOCK,
         'archetypes' => array(
             'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW
         )
     ),
 

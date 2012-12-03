@@ -55,7 +55,7 @@ echo $OUTPUT->heading(format_string($attemptobj->get_question_name($slot)));
 
 // Process any data that was submitted.
 if (data_submitted() && confirm_sesskey()) {
-    if (optional_param('submit', false, PARAM_BOOL)) {
+    if (optional_param('submit', false, PARAM_BOOL) && question_behaviour::is_manual_grade_in_range($attemptobj->get_uniqueid(), $slot)) {
         $transaction = $DB->start_delegated_transaction();
         $attemptobj->process_submitted_actions(time());
         $transaction->allow_commit();
@@ -78,11 +78,8 @@ echo $attemptobj->render_question_for_commenting($slot);
 </div>
 <fieldset class="hidden">
     <div>
-        <div class="fitem">
-            <div class="fitemtitle">
-                <div class="fgrouplabel"><label> </label></div>
-            </div>
-            <fieldset class="felement fgroup">
+        <div class="fitem fitem_actionbuttons fitem_fsubmit">
+            <fieldset class="felement fsubmit">
                 <input id="id_submitbutton" type="submit" name="submit" value="<?php
                         print_string('save', 'quiz'); ?>"/>
             </fieldset>

@@ -17,8 +17,7 @@
 /**
  * DDL layer tests
  *
- * @package    core
- * @subpackage ddl
+ * @package    core_ddl
  * @category   phpunit
  * @copyright  2008 Nicolas Connault
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -161,13 +160,12 @@ class ddl_testcase extends database_driver_testcase {
         // first make sure it returns false if table does not exist
         $table = $this->tables['test_table0'];
 
-        ob_start(); // hide debug warning
         try {
             $result = $DB->get_records('test_table0');
         } catch (dml_exception $e) {
             $result = false;
         }
-        ob_end_clean();
+        $this->resetDebugging();
 
         $this->assertFalse($result);
 
@@ -184,13 +182,12 @@ class ddl_testcase extends database_driver_testcase {
         // drop table and test again
         $dbman->drop_table($table);
 
-        ob_start(); // hide debug warning
         try {
             $result = $DB->get_records('test_table0');
         } catch (dml_exception $e) {
             $result = false;
         }
-        ob_end_clean();
+        $this->resetDebugging();
 
         $this->assertFalse($result);
 
@@ -646,7 +643,7 @@ class ddl_testcase extends database_driver_testcase {
         // fill the table with some records before adding fields
         $this->fill_deftable('test_table1');
 
-        /// add one not null field without specifying default value (throws ddl_exception)
+        // add one not null field without specifying default value (throws ddl_exception)
         $field = new xmldb_field('onefield');
         $field->set_attributes(XMLDB_TYPE_INTEGER, '6', XMLDB_UNSIGNED, XMLDB_NOTNULL, null, null);
         try {
@@ -656,7 +653,7 @@ class ddl_testcase extends database_driver_testcase {
             $this->assertTrue($e instanceof ddl_exception);
         }
 
-        /// add one existing field (throws ddl_exception)
+        // add one existing field (throws ddl_exception)
         $field = new xmldb_field('course');
         $field->set_attributes(XMLDB_TYPE_INTEGER, '6', XMLDB_UNSIGNED, XMLDB_NOTNULL, null, 2);
         try {
@@ -670,7 +667,7 @@ class ddl_testcase extends database_driver_testcase {
         // TODO: add one text field with default, must throw exception
         // TODO: add one binary field with default, must throw exception
 
-        /// add one integer field and check it
+        // add one integer field and check it
         $field = new xmldb_field('oneinteger');
         $field->set_attributes(XMLDB_TYPE_INTEGER, '6', XMLDB_UNSIGNED, XMLDB_NOTNULL, null, 2);
         $dbman->add_field($table, $field);
@@ -686,7 +683,7 @@ class ddl_testcase extends database_driver_testcase {
         $this->assertEquals($columns['oneinteger']->meta_type    ,'I');
         $this->assertEquals($DB->get_field('test_table1', 'oneinteger', array(), IGNORE_MULTIPLE), 2); //check default has been applied
 
-        /// add one numeric field and check it
+        // add one numeric field and check it
         $field = new xmldb_field('onenumber');
         $field->set_attributes(XMLDB_TYPE_NUMBER, '6,3', XMLDB_UNSIGNED, XMLDB_NOTNULL, null, 2.55);
         $dbman->add_field($table, $field);
@@ -703,7 +700,7 @@ class ddl_testcase extends database_driver_testcase {
         $this->assertEquals($columns['onenumber']->meta_type    ,'N');
         $this->assertEquals($DB->get_field('test_table1', 'onenumber', array(), IGNORE_MULTIPLE), 2.550); //check default has been applied
 
-        /// add one float field and check it (not official type - must work as number)
+        // add one float field and check it (not official type - must work as number)
         $field = new xmldb_field('onefloat');
         $field->set_attributes(XMLDB_TYPE_FLOAT, '6,3', XMLDB_UNSIGNED, XMLDB_NOTNULL, null, 3.550);
         $dbman->add_field($table, $field);
@@ -723,7 +720,7 @@ class ddl_testcase extends database_driver_testcase {
         // this isn't a real problem at all.
         $this->assertEquals(round($DB->get_field('test_table1', 'onefloat', array(), IGNORE_MULTIPLE), 7), 3.550); //check default has been applied
 
-        /// add one char field and check it
+        // add one char field and check it
         $field = new xmldb_field('onechar');
         $field->set_attributes(XMLDB_TYPE_CHAR, '25', XMLDB_UNSIGNED, XMLDB_NOTNULL, null, 'Nice dflt!');
         $dbman->add_field($table, $field);
@@ -740,7 +737,7 @@ class ddl_testcase extends database_driver_testcase {
         $this->assertEquals($columns['onechar']->meta_type    ,'C');
         $this->assertEquals($DB->get_field('test_table1', 'onechar', array(), IGNORE_MULTIPLE), 'Nice dflt!'); //check default has been applied
 
-        /// add one big text field and check it
+        // add one big text field and check it
         $field = new xmldb_field('onetext');
         $field->set_attributes(XMLDB_TYPE_TEXT, 'big');
         $dbman->add_field($table, $field);
@@ -756,21 +753,21 @@ class ddl_testcase extends database_driver_testcase {
         $this->assertEquals($columns['onetext']->default_value, null);
         $this->assertEquals($columns['onetext']->meta_type    ,'X');
 
-        /// add one medium text field and check it
+        // add one medium text field and check it
         $field = new xmldb_field('mediumtext');
         $field->set_attributes(XMLDB_TYPE_TEXT, 'medium');
         $dbman->add_field($table, $field);
         $columns = $DB->get_columns('test_table1');
         $this->assertTrue(($columns['mediumtext']->max_length == -1) or ($columns['mediumtext']->max_length >= 16777215)); // -1 means unknown or big
 
-        /// add one small text field and check it
+        // add one small text field and check it
         $field = new xmldb_field('smalltext');
         $field->set_attributes(XMLDB_TYPE_TEXT, 'small');
         $dbman->add_field($table, $field);
         $columns = $DB->get_columns('test_table1');
         $this->assertTrue(($columns['smalltext']->max_length == -1) or ($columns['smalltext']->max_length >= 65535)); // -1 means unknown or big
 
-        /// add one binary field and check it
+        // add one binary field and check it
         $field = new xmldb_field('onebinary');
         $field->set_attributes(XMLDB_TYPE_BINARY);
         $dbman->add_field($table, $field);
@@ -1124,13 +1121,12 @@ class ddl_testcase extends database_driver_testcase {
         $record = new stdClass();
         $record->name = NULL;
 
-        ob_start(); // hide debug warning
         try {
             $result = $DB->insert_record('test_table_cust0', $record, false);
         } catch (dml_exception $e) {
             $result = false;
         }
-        ob_end_clean();
+        $this->resetDebugging();
         $this->assertFalse($result);
 
         $field = new xmldb_field('name');
@@ -1146,13 +1142,12 @@ class ddl_testcase extends database_driver_testcase {
         $field->set_attributes(XMLDB_TYPE_CHAR, '30', null, XMLDB_NOTNULL, null, null);
         $dbman->change_field_notnull($table, $field);
 
-        ob_start(); // hide debug warning
         try {
             $result = $DB->insert_record('test_table_cust0', $record, false);
         } catch (dml_exception $e) {
             $result = false;
         }
-        ob_end_clean();
+        $this->resetDebugging();
         $this->assertFalse($result);
 
         $dbman->drop_table($table);
@@ -1215,13 +1210,12 @@ class ddl_testcase extends database_driver_testcase {
         $index->set_attributes(XMLDB_INDEX_UNIQUE, array('onenumber', 'name'));
         $dbman->add_index($table, $index);
 
-        ob_start(); // hide debug warning
         try {
             $result = $DB->insert_record('test_table_cust0', $record, false);
         } catch (dml_exception $e) {
             $result = false;;
         }
-        ob_end_clean();
+        $this->resetDebugging();
         $this->assertFalse($result);
 
         $dbman->drop_table($table);
@@ -1234,6 +1228,7 @@ class ddl_testcase extends database_driver_testcase {
         $index = new xmldb_index('secondname');
         $index->set_attributes(XMLDB_INDEX_NOTUNIQUE, array('course', 'name'));
         $dbman->add_index($table, $index);
+        $this->assertTrue($dbman->index_exists($table, $index));
     }
 
     public function testFindIndexName() {
@@ -1292,6 +1287,9 @@ class ddl_testcase extends database_driver_testcase {
         $key = new xmldb_key('id-course-grade');
         $key->set_attributes(XMLDB_KEY_UNIQUE, array('id', 'course', 'grade'));
         $dbman->add_key($table, $key);
+
+        // No easy way to test it, this just makes sure no errors are encountered.
+        $this->assertTrue(true);
     }
 
     public function testAddForeignUniqueKey() {
@@ -1303,6 +1301,9 @@ class ddl_testcase extends database_driver_testcase {
         $key = new xmldb_key('course');
         $key->set_attributes(XMLDB_KEY_FOREIGN_UNIQUE, array('course'), 'test_table0', array('id'));
         $dbman->add_key($table, $key);
+
+        // No easy way to test it, this just makes sure no errors are encountered.
+        $this->assertTrue(true);
     }
 
     public function testDropKey() {
@@ -1316,6 +1317,9 @@ class ddl_testcase extends database_driver_testcase {
         $dbman->add_key($table, $key);
 
         $dbman->drop_key($table, $key);
+
+        // No easy way to test it, this just makes sure no errors are encountered.
+        $this->assertTrue(true);
     }
 
     public function testAddForeignKey() {
@@ -1327,6 +1331,9 @@ class ddl_testcase extends database_driver_testcase {
         $key = new xmldb_key('course');
         $key->set_attributes(XMLDB_KEY_FOREIGN, array('course'), 'test_table0', array('id'));
         $dbman->add_key($table, $key);
+
+        // No easy way to test it, this just makes sure no errors are encountered.
+        $this->assertTrue(true);
     }
 
     public function testDropForeignKey() {
@@ -1340,6 +1347,9 @@ class ddl_testcase extends database_driver_testcase {
         $dbman->add_key($table, $key);
 
         $dbman->drop_key($table, $key);
+
+        // No easy way to test it, this just makes sure no errors are encountered.
+        $this->assertTrue(true);
     }
 
     public function testRenameField() {
@@ -1357,7 +1367,6 @@ class ddl_testcase extends database_driver_testcase {
         $this->assertFalse(array_key_exists('type', $columns));
         $this->assertTrue(array_key_exists('newfieldname', $columns));
     }
-
 
     public function testIndexExists() {
         // Skipping: this is just a test of find_index_name
@@ -1384,12 +1393,10 @@ class ddl_testcase extends database_driver_testcase {
 
         // feed nonexistent file
         try {
-            ob_start(); // hide debug warning
             $dbman->delete_tables_from_xmldb_file('fpsoiudfposui');
-            ob_end_clean();
             $this->assertTrue(false);
         } catch (Exception $e) {
-            ob_end_clean();
+            $this->resetDebugging();
             $this->assertTrue($e instanceof moodle_exception);
         }
 
@@ -1400,12 +1407,10 @@ class ddl_testcase extends database_driver_testcase {
             $devhack = true;
         }
         try {
-            ob_start(); // hide debug warning
             $dbman->delete_tables_from_xmldb_file(__DIR__ . '/fixtures/invalid.xml');
             $this->assertTrue(false);
-            ob_end_clean();
         } catch (Exception $e) {
-            ob_end_clean();
+            $this->resetDebugging();
             $this->assertTrue($e instanceof moodle_exception);
         }
         if ($devhack) {
@@ -1429,12 +1434,10 @@ class ddl_testcase extends database_driver_testcase {
 
         // feed nonexistent file
         try {
-            ob_start(); // hide debug warning
             $dbman->install_from_xmldb_file('fpsoiudfposui');
-            ob_end_clean();
             $this->assertTrue(false);
         } catch (Exception $e) {
-            ob_end_clean();
+            $this->resetDebugging();
             $this->assertTrue($e instanceof moodle_exception);
         }
 
@@ -1445,12 +1448,10 @@ class ddl_testcase extends database_driver_testcase {
             $devhack = true;
         }
         try {
-            ob_start(); // hide debug warning
             $dbman->install_from_xmldb_file(__DIR__ . '/fixtures/invalid.xml');
-            ob_end_clean();
             $this->assertTrue(false);
         } catch (Exception $e) {
-            ob_end_clean();
+            $this->resetDebugging();
             $this->assertTrue($e instanceof moodle_exception);
         }
         if ($devhack) {
@@ -1541,10 +1542,9 @@ class ddl_testcase extends database_driver_testcase {
         $this->assertTrue($dbman->table_exists('test_table1'));
 
         // Make sure it can be dropped using deprecated drop_temp_table()
-        $CFG->debug = 0;
         $dbman->drop_temp_table($table1);
         $this->assertFalse($dbman->table_exists('test_table1'));
-        $CFG->debug = DEBUG_DEVELOPER;
+        $this->assertDebuggingCalled();
     }
 
     public function test_concurrent_temp_tables() {
@@ -1633,6 +1633,50 @@ class ddl_testcase extends database_driver_testcase {
     public function test_reserved_words() {
         $reserved = sql_generator::getAllReservedWords();
         $this->assertTrue(count($reserved) > 1);
+    }
+
+    public function test_index_hints() {
+        $DB = $this->tdb;
+        $dbman = $DB->get_manager();
+
+        $table = new xmldb_table('testtable');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('name', XMLDB_TYPE_CHAR, 255, null, XMLDB_NOTNULL, null);
+        $table->add_field('path', XMLDB_TYPE_CHAR, 255, null, XMLDB_NOTNULL, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $table->add_index('name', XMLDB_INDEX_NOTUNIQUE, array('name'), array('xxxx,yyyy'));
+        $table->add_index('path', XMLDB_INDEX_NOTUNIQUE, array('path'), array('varchar_pattern_ops'));
+
+        // Drop if exists
+        if ($dbman->table_exists($table)) {
+            $dbman->drop_table($table);
+        }
+        $dbman->create_table($table);
+        $tablename = $table->getName();
+        $this->tables[$tablename] = $table;
+
+        $table = new xmldb_table('testtable');
+        $index = new xmldb_index('name', XMLDB_INDEX_NOTUNIQUE, array('name'), array('xxxx,yyyy'));
+        $this->assertTrue($dbman->index_exists($table, $index));
+
+        $table = new xmldb_table('testtable');
+        $index = new xmldb_index('path', XMLDB_INDEX_NOTUNIQUE, array('path'), array('varchar_pattern_ops'));
+        $this->assertTrue($dbman->index_exists($table, $index));
+
+        // Try unique indexes too.
+        $dbman->drop_table($this->tables[$tablename]);
+
+        $table = new xmldb_table('testtable');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('path', XMLDB_TYPE_CHAR, 255, null, XMLDB_NOTNULL, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+        $table->add_index('path', XMLDB_INDEX_UNIQUE, array('path'), array('varchar_pattern_ops'));
+        $dbman->create_table($table);
+        $this->tables[$tablename] = $table;
+
+        $table = new xmldb_table('testtable');
+        $index = new xmldb_index('path', XMLDB_INDEX_UNIQUE, array('path'), array('varchar_pattern_ops'));
+        $this->assertTrue($dbman->index_exists($table, $index));
     }
 
     public function test_index_max_bytes() {

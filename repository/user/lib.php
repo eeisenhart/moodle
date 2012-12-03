@@ -56,6 +56,8 @@ class repository_user extends repository {
         $ret['dynload'] = true;
         $ret['nosearch'] = true;
         $ret['nologin'] = true;
+        $manageurl = new moodle_url('/user/files.php');
+        $ret['manage'] = $manageurl->out();
         $list = array();
 
         if (!empty($encodedpath)) {
@@ -72,7 +74,7 @@ class repository_user extends repository {
         $filearea = 'private';
         $component = 'user';
         $itemid  = 0;
-        $context = get_context_instance(CONTEXT_USER, $USER->id);
+        $context = context_user::instance($USER->id);
 
         try {
             $browser = get_file_browser();
@@ -112,10 +114,14 @@ class repository_user extends repository {
                             'datecreated' => $child->get_timecreated(),
                             'author' => $child->get_author(),
                             'license' => $child->get_license(),
+                            'isref' => $child->is_external_file(),
                             'source'=> $encodedpath,
                             'icon' => $OUTPUT->pix_url(file_file_icon($child, 24))->out(false),
                             'thumbnail' => $OUTPUT->pix_url(file_file_icon($child, 90))->out(false)
                         );
+                        if ($child->get_status() == 666) {
+                            $node['originalmissing'] = true;
+                        }
                         if ($imageinfo = $child->get_imageinfo()) {
                             $fileurl = new moodle_url($child->get_url());
                             $node['realthumbnail'] = $fileurl->out(false, array('preview' => 'thumb', 'oid' => $child->get_timemodified()));
@@ -153,79 +159,6 @@ class repository_user extends repository {
         return FILE_INTERNAL | FILE_REFERENCE;
     }
 
-
-    /**
-     * Prepare file reference information
-     *
-     * @param string $source
-     * @return string file referece
-     */
-    public function get_file_reference($source) {
-        global $USER;
-        $params = unserialize(base64_decode($source));
-        if (is_array($params)) {
-            $filepath = clean_param($params['filepath'], PARAM_PATH);;
-            $filename = clean_param($params['filename'], PARAM_FILE);
-            $contextid = clean_param($params['contextid'], PARAM_INT);
-        }
-        // We store all file parameters, so file api could
-        // find the refernces later.
-        $reference = array();
-        $reference['contextid'] = $contextid;
-        $reference['component'] = 'user';
-        $reference['filearea']  = 'private';
-        $reference['itemid']    = 0;
-        $reference['filepath']  = $filepath;
-        $reference['filename']  = $filename;
-
-        return file_storage::pack_reference($reference);
-    }
-
-    /**
-     * Get file from external repository by reference
-     * {@link repository::get_file_reference()}
-     * {@link repository::get_file()}
-     *
-     * @param stdClass $reference file reference db record
-     * @return stdClass|null|false
-     */
-    public function get_file_by_reference($reference) {
-        $fs = get_file_storage();
-        $ref = $reference->reference;
-        $params = unserialize(base64_decode($ref));
-        if (!is_array($params)) {
-            throw new repository_exception('invalidparams', 'repository');
-        }
-        $filename  = is_null($params['filename'])  ? null : clean_param($params['filename'], PARAM_FILE);
-        $filepath  = is_null($params['filepath'])  ? null : clean_param($params['filepath'], PARAM_PATH);;
-        $contextid = is_null($params['contextid']) ? null : clean_param($params['contextid'], PARAM_INT);
-
-        // hard coded component, filearea and item for security
-        $component = 'user';
-        $filearea  = 'private';
-        $itemid    = 0;
-
-        $storedfile = $fs->get_file($contextid, $component, $filearea, $itemid, $filepath, $filename);
-
-        $fileinfo = new stdClass;
-        $fileinfo->contenthash = $storedfile->get_contenthash();
-        $fileinfo->filesize    = $storedfile->get_filesize();
-        return $fileinfo;
-    }
-
-    /**
-     * Return human readable reference information
-     * {@link stored_file::get_reference()}
-     *
-     * @param string $reference
-     * @return string|null
-     */
-    public function get_reference_details($reference) {
-        $params = file_storage::unpack_reference($reference);
-        // Indicate this is from user private area
-        return $this->get_name() . ': ' . $params['filepath'] . $params['filename'];
-    }
-
     /**
      * Return reference file life time
      *
@@ -235,30 +168,5 @@ class repository_user extends repository {
     public function get_reference_file_lifetime($ref) {
         // this should be realtime
         return 0;
-    }
-
-    /**
-     * Repository method to serve file
-     *
-     * @param stored_file $storedfile
-     * @param int $lifetime Number of seconds before the file should expire from caches (default 24 hours)
-     * @param int $filter 0 (default)=no filtering, 1=all files, 2=html files only
-     * @param bool $forcedownload If true (default false), forces download of file rather than view in browser/plugin
-     * @param array $options additional options affecting the file serving
-     */
-    public function send_file($storedfile, $lifetime=86400 , $filter=0, $forcedownload=false, array $options = null) {
-        $reference = $storedfile->get_reference();
-        $params = file_storage::unpack_reference($reference);
-        $filepath = clean_param($params['filepath'], PARAM_PATH);;
-        $filename = clean_param($params['filename'], PARAM_FILE);
-        $contextid = clean_param($params['contextid'], PARAM_INT);
-        $filearea  = 'private';
-        $component = 'user';
-        $itemid    = 0;
-
-        $fs = get_file_storage();
-        $storedfile = $fs->get_file($contextid, $component, $filearea, $itemid, $filepath, $filename);
-
-        send_stored_file($storedfile, $lifetime, $filter, $forcedownload, $options);
     }
 }

@@ -37,13 +37,13 @@ require_once($CFG->dirroot . '/mod/quiz/locallib.php');
 $timenow = time();
 
 // Get submitted parameters.
-$attemptid = required_param('attempt', PARAM_INT);
-$next = optional_param('next', false, PARAM_BOOL);
-$thispage = optional_param('thispage', 0, PARAM_INT);
-$nextpage = optional_param('nextpage', 0, PARAM_INT);
+$attemptid     = required_param('attempt',  PARAM_INT);
+$thispage      = optional_param('thispage', 0, PARAM_INT);
+$nextpage      = optional_param('nextpage', 0, PARAM_INT);
+$next          = optional_param('next',          false, PARAM_BOOL);
 $finishattempt = optional_param('finishattempt', false, PARAM_BOOL);
-$timeup = optional_param('timeup', 0, PARAM_BOOL); // True if form was submitted by timer.
-$scrollpos = optional_param('scrollpos', '', PARAM_RAW);
+$timeup        = optional_param('timeup',        0,      PARAM_BOOL); // True if form was submitted by timer.
+$scrollpos     = optional_param('scrollpos',     '',     PARAM_RAW);
 
 $transaction = $DB->start_delegated_transaction();
 $attemptobj = quiz_attempt::create($attemptid);
@@ -65,12 +65,19 @@ if ($page == -1) {
 
 // If there is only a very small amount of time left, there is no point trying
 // to show the student another page of the quiz. Just finish now.
+$graceperiodmin = null;
 $accessmanager = $attemptobj->get_access_manager($timenow);
-$timeleft = $accessmanager->get_time_left($attemptobj->get_attempt(), $timenow);
+$timeclose = $accessmanager->get_end_time($attemptobj->get_attempt());
+
+// Don't enforce timeclose for previews
+if ($attemptobj->is_preview()) {
+    $timeclose = false;
+}
 $toolate = false;
-if ($timeleft !== false && $timeleft < QUIZ_MIN_TIME_TO_CONTINUE) {
+if ($timeclose !== false && $timenow > $timeclose - QUIZ_MIN_TIME_TO_CONTINUE) {
     $timeup = true;
-    if ($timeleft < -get_config('quiz', 'graceperiodmin')) {
+    $graceperiodmin = get_config('quiz', 'graceperiodmin');
+    if ($timenow > $timeclose + $graceperiodmin) {
         $toolate = true;
     }
 }
@@ -97,9 +104,19 @@ if ($attemptobj->is_finished()) {
 
 // If time is running out, trigger the appropriate action.
 $becomingoverdue = false;
+$becomingabandoned = false;
 if ($timeup) {
     if ($attemptobj->get_quiz()->overduehandling == 'graceperiod') {
-        $becomingoverdue = true;
+        if (is_null($graceperiodmin)) {
+            $graceperiodmin = get_config('quiz', 'graceperiodmin');
+        }
+        if ($timenow > $timeclose + $attemptobj->get_quiz()->graceperiod + $graceperiodmin) {
+            // Grace period has run out.
+            $finishattempt = true;
+            $becomingabandoned = true;
+        } else {
+            $becomingoverdue = true;
+        }
     } else {
         $finishattempt = true;
     }
@@ -150,7 +167,11 @@ add_to_log($attemptobj->get_courseid(), 'quiz', 'close attempt',
 
 // Update the quiz attempt record.
 try {
-    $attemptobj->process_finish($timenow, !$toolate);
+    if ($becomingabandoned) {
+        $attemptobj->process_abandon($timenow, true);
+    } else {
+        $attemptobj->process_finish($timenow, !$toolate);
+    }
 
 } catch (question_out_of_sequence_exception $e) {
     print_error('submissionoutofsequencefriendlymessage', 'question',

@@ -1,5 +1,5 @@
 <?php
-// This file is part of Book module for Moodle - http://moodle.org/
+// This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@ defined('MOODLE_INTERNAL') || die;
  */
 function book_get_numbering_types() {
     global $CFG; // required for the include
+
     require_once(dirname(__FILE__).'/locallib.php');
 
     return array (
@@ -166,6 +167,15 @@ function book_print_recent_activity($course, $viewfullnames, $timestart) {
 }
 
 /**
+ * This function is used by the reset_course_userdata function in moodlelib.
+ * @param $data the data submitted from the reset course.
+ * @return array status array
+ */
+function book_reset_userdata($data) {
+    return array();
+}
+
+/**
  * No cron in book.
  *
  * @return bool
@@ -291,11 +301,7 @@ function book_supports($feature) {
  * @return void
  */
 function book_extend_settings_navigation(settings_navigation $settingsnav, navigation_node $booknode) {
-    global $USER, $PAGE, $CFG, $DB, $OUTPUT;
-
-    if ($PAGE->cm->modname !== 'book') {
-        return;
-    }
+    global $USER, $PAGE;
 
     $plugins = get_plugin_list('booktool');
     foreach ($plugins as $plugin => $dir) {

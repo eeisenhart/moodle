@@ -107,7 +107,7 @@ final class portfolio_export_form extends moodleform {
      * @param stdClass $data portfolio information from form data
      * @return array
      */
-    public function validation($data) {
+    public function validation($data, $files) {
 
         $errors = array();
 
@@ -199,13 +199,9 @@ final class portfolio_admin_form extends moodleform {
 
         // let the plugin add the fields they want (either statically or not)
         if (portfolio_static_function($this->plugin, 'has_admin_config')) {
-            if (!$this->instance) {
-                require_once($CFG->libdir . '/portfolio/plugin.php');
-                require_once($CFG->dirroot . '/portfolio/' . $this->plugin .  '/lib.php');
-                call_user_func(array('portfolio_plugin_' . $this->plugin, 'admin_config_form'), $mform);
-            } else {
-                $this->instance->admin_config_form($mform);
-            }
+            require_once($CFG->libdir . '/portfolio/plugin.php');
+            require_once($CFG->dirroot . '/portfolio/' . $this->plugin .  '/lib.php');
+            call_user_func(array('portfolio_plugin_' . $this->plugin, 'admin_config_form'), $mform);
         }
 
         // and set the data if we have some.
@@ -228,7 +224,7 @@ final class portfolio_admin_form extends moodleform {
      * @param stdObject $data form data
      * @return array
      */
-    public function validation($data) {
+    public function validation($data, $files) {
         global $DB;
 
         $errors = array();
@@ -237,12 +233,7 @@ final class portfolio_admin_form extends moodleform {
         }
 
         $pluginerrors = array();
-        if ($this->instance) {
-            $pluginerrors = $this->instance->admin_config_validation($data);
-        }
-        else {
-            $pluginerrors = portfolio_static_function($this->plugin, 'admin_config_validation', $data);
-        }
+        $pluginerrors = portfolio_static_function($this->plugin, 'admin_config_validation', $data);
         if (is_array($pluginerrors)) {
             $errors = array_merge($errors, $pluginerrors);
         }
@@ -296,7 +287,7 @@ final class portfolio_user_form extends moodleform {
      *
      * @param stdClass $data form data
      */
-    public function validation($data) {
+    public function validation($data, $files) {
 
         $errors = $this->instance->user_config_validation($data);
 

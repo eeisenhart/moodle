@@ -26,12 +26,6 @@ require_once($CFG->libdir.'/eventslib.php');
 
 define ('MESSAGE_SHORTLENGTH', 300);
 
-//$PAGE isnt set if we're being loaded by cron which doesnt display popups anyway
-if (isset($PAGE)) {
-    //TODO: this is a mega crazy hack - it is not acceptable to call anything when including lib!!! (skodak)
-    $PAGE->set_popup_notification_allowed(false); // We are in a message window (so don't pop up a new one)
-}
-
 define ('MESSAGE_DISCUSSION_WIDTH',600);
 define ('MESSAGE_DISCUSSION_HEIGHT',500);
 
@@ -507,9 +501,10 @@ function message_print_usergroup_selector($viewing, $courses, $coursecontexts, $
     }
 
     echo html_writer::start_tag('form', array('id' => 'usergroupform','method' => 'get','action' => ''));
-        echo html_writer::start_tag('fieldset');
-            echo html_writer::select($options, 'viewing', $viewing, false, array('id' => 'viewing','onchange' => 'this.form.submit()'));
-        echo html_writer::end_tag('fieldset');
+    echo html_writer::start_tag('fieldset');
+    echo html_writer::label(get_string('messagenavigation', 'message'), 'viewing');
+    echo html_writer::select($options, 'viewing', $viewing, false, array('id' => 'viewing','onchange' => 'this.form.submit()'));
+    echo html_writer::end_tag('fieldset');
     echo html_writer::end_tag('form');
 }
 
@@ -523,7 +518,7 @@ function message_get_course_contexts($courses) {
     $coursecontexts = array();
 
     foreach($courses as $course) {
-        $coursecontexts[$course->id] = get_context_instance(CONTEXT_COURSE, $course->id);
+        $coursecontexts[$course->id] = context_course::instance($course->id);
     }
 
     return $coursecontexts;
@@ -748,27 +743,13 @@ function message_get_recent_conversations($user, $limitfrom=0, $limitto=100) {
         }
     }
 
-    //Sort the conversations. This is a bit complicated as we need to sort by $conversation->timecreated
-    //and there may be multiple conversations with the same timecreated value.
-    //The conversations array contains both read and unread messages (different tables) so sorting by ID won't work
-    usort($conversations, "conversationsort");
+    // Sort the conversations by $conversation->timecreated, newest to oldest
+    // There may be multiple conversations with the same timecreated
+    // The conversations array contains both read and unread messages (different tables) so sorting by ID won't work
+    $result = collatorlib::asort_objects_by_property($conversations, 'timecreated', collatorlib::SORT_NUMERIC);
+    $conversations = array_reverse($conversations);
 
     return $conversations;
-}
-
-/**
- * Sort function used to order conversations
- *
- * @param object $a A conversation object
- * @param object $b A conversation object
- * @return integer
- */
-function conversationsort($a, $b)
-{
-    if ($a->timecreated == $b->timecreated) {
-        return 0;
-    }
-    return ($a->timecreated > $b->timecreated) ? -1 : 1;
 }
 
 /**
@@ -843,7 +824,7 @@ function message_print_recent_notifications($user=null) {
 
     $showicontext = false;
     $showotheruser = false;
-    message_print_recent_messages_table($notifications, $user, $showotheruser, $showicontext);
+    message_print_recent_messages_table($notifications, $user, $showotheruser, $showicontext, true);
 }
 
 /**
@@ -853,9 +834,10 @@ function message_print_recent_notifications($user=null) {
  * @param object $user the current user
  * @param bool $showotheruser display information on the other user?
  * @param bool $showicontext show text next to the action icons?
+ * @param bool $forcetexttohtml Force text to go through @see text_to_html() via @see format_text()
  * @return void
  */
-function message_print_recent_messages_table($messages, $user=null, $showotheruser=true, $showicontext=false) {
+function message_print_recent_messages_table($messages, $user=null, $showotheruser=true, $showicontext=false, $forcetexttohtml=false) {
     global $OUTPUT;
     static $dateformat;
 
@@ -913,7 +895,7 @@ function message_print_recent_messages_table($messages, $user=null, $showotherus
         }
 
         echo html_writer::tag('span', userdate($message->timecreated, $dateformat), array('class' => 'messagedate'));
-        echo html_writer::tag('span', format_text($messagetoprint, FORMAT_HTML), array('class' => 'themessage'));
+        echo html_writer::tag('span', format_text($messagetoprint, $forcetexttohtml?FORMAT_MOODLE:FORMAT_HTML), array('class' => 'themessage'));
         echo message_format_contexturl($message);
         echo html_writer::end_tag('div');//end singlemessage
     }
@@ -1228,7 +1210,7 @@ function message_print_search_results($frm, $showicontext=false, $currentuser=nu
                 echo html_writer::end_tag('td');
 
                 echo html_writer::start_tag('td', array('class' => 'summary'));
-                echo message_get_fragment($message->fullmessage, $keywords);
+                echo message_get_fragment($message->smallmessage, $keywords);
                 echo html_writer::start_tag('div', array('class' => 'link'));
 
                 //If the user clicks the context link display message sender on the left
@@ -1288,7 +1270,10 @@ function message_print_user ($user=false, $iscontact=false, $isblocked=false, $i
         echo $OUTPUT->user_picture($USER, array('size' => 20, 'courseid' => SITEID));
     } else {
         echo $OUTPUT->user_picture($user, array('size' => 20, 'courseid' => SITEID));
-        echo '&nbsp;';
+
+        $link = new moodle_url("/message/index.php?id=$user->id");
+        echo $OUTPUT->action_link($link, fullname($user), null, array('title' =>
+                get_string('sendmessageto', 'message', fullname($user))));
 
         $return = false;
         $script = null;
@@ -1297,27 +1282,12 @@ function message_print_user ($user=false, $iscontact=false, $isblocked=false, $i
         } else {
             message_contact_link($user->id, 'add', $return, $script, $includeicontext);
         }
-        echo '&nbsp;';
+
         if ($isblocked) {
             message_contact_link($user->id, 'unblock', $return, $script, $includeicontext);
         } else {
             message_contact_link($user->id, 'block', $return, $script, $includeicontext);
         }
-
-        $popupoptions = array(
-                'height' => MESSAGE_DISCUSSION_HEIGHT,
-                'width' => MESSAGE_DISCUSSION_WIDTH,
-                'menubar' => false,
-                'location' => false,
-                'status' => true,
-                'scrollbars' => true,
-                'resizable' => true);
-
-        $link = new moodle_url("/message/index.php?id=$user->id");
-        //$action = new popup_action('click', $link, "message_$user->id", $popupoptions);
-        $action = null;
-        echo $OUTPUT->action_link($link, fullname($user), $action, array('title' => get_string('sendmessageto', 'message', fullname($user))));
-
     }
 }
 
@@ -1369,14 +1339,14 @@ function message_contact_link($userid, $linktype='add', $return=false, $script=n
                 $iconpath = 't/block';
                 break;
             case 'unblock':
-                $iconpath = 't/userblue';
+                $iconpath = 't/unblock';
                 break;
             case 'remove':
-                $iconpath = 'i/cross_red_big';
+                $iconpath = 't/removecontact';
                 break;
             case 'add':
             default:
-                $iconpath = 't/addgreen';
+                $iconpath = 't/addcontact';
         }
 
         $img = '<img src="'.$OUTPUT->pix_url($iconpath).'" class="iconsmall" alt="'.$safealttext.'" />';
@@ -1423,9 +1393,9 @@ function message_history_link($userid1, $userid2, $return=false, $keywords='', $
     }
 
     if ($linktext == 'icon') {  // Icon only
-        $fulllink = '<img src="'.$OUTPUT->pix_url('t/log') . '" class="iconsmall" alt="'.$strmessagehistory.'" />';
+        $fulllink = '<img src="'.$OUTPUT->pix_url('t/messages') . '" class="iconsmall" alt="'.$strmessagehistory.'" />';
     } else if ($linktext == 'both') {  // Icon and standard name
-        $fulllink = '<img src="'.$OUTPUT->pix_url('t/log') . '" class="iconsmall" alt="" />';
+        $fulllink = '<img src="'.$OUTPUT->pix_url('t/messages') . '" class="iconsmall" alt="" />';
         $fulllink .= '&nbsp;'.$strmessagehistory;
     } else if ($linktext) {    // Custom name
         $fulllink = $linktext;
@@ -1498,7 +1468,7 @@ function message_search_users($courseid, $searchtext, $sort='', $exceptions='') 
                                      $order", $params);
     } else {
 //TODO: add enabled enrolment join here (skodak)
-        $context = get_context_instance(CONTEXT_COURSE, $courseid);
+        $context = context_course::instance($courseid);
         $contextlists = get_related_contexts_string($context);
 
         // everyone who has a role assignment in this course or higher
@@ -1535,7 +1505,7 @@ function message_search($searchterms, $fromme=true, $tome=true, $courseid='none'
     global $CFG, $USER, $DB;
 
     // If user is searching all messages check they are allowed to before doing anything else
-    if ($courseid == SITEID && !has_capability('moodle/site:readallmessages', get_context_instance(CONTEXT_SYSTEM))) {
+    if ($courseid == SITEID && !has_capability('moodle/site:readallmessages', context_system::instance())) {
         print_error('accessdenied','admin');
     }
 
@@ -1613,10 +1583,10 @@ function message_search($searchterms, $fromme=true, $tome=true, $courseid='none'
     ///    c.  Messages to and from user
 
     if ($courseid == SITEID) { /// admin is searching all messages
-        $m_read   = $DB->get_records_sql("SELECT m.id, m.useridto, m.useridfrom, m.fullmessage, m.timecreated
+        $m_read   = $DB->get_records_sql("SELECT m.id, m.useridto, m.useridfrom, m.smallmessage, m.fullmessage, m.timecreated
                                             FROM {message_read} m
                                            WHERE $searchcond", $params, 0, MESSAGE_SEARCH_MAX_RESULTS);
-        $m_unread = $DB->get_records_sql("SELECT m.id, m.useridto, m.useridfrom, m.fullmessage, m.timecreated
+        $m_unread = $DB->get_records_sql("SELECT m.id, m.useridto, m.useridfrom, m.smallmessage, m.fullmessage, m.timecreated
                                             FROM {message} m
                                            WHERE $searchcond", $params, 0, MESSAGE_SEARCH_MAX_RESULTS);
 
@@ -1641,10 +1611,10 @@ function message_search($searchterms, $fromme=true, $tome=true, $courseid='none'
             $params['userid'] = $userid;
         }
 
-        $m_read   = $DB->get_records_sql("SELECT m.id, m.useridto, m.useridfrom, m.fullmessage, m.timecreated
+        $m_read   = $DB->get_records_sql("SELECT m.id, m.useridto, m.useridfrom, m.smallmessage, m.fullmessage, m.timecreated
                                             FROM {message_read} m
                                            WHERE $searchcond", $params, 0, MESSAGE_SEARCH_MAX_RESULTS);
-        $m_unread = $DB->get_records_sql("SELECT m.id, m.useridto, m.useridfrom, m.fullmessage, m.timecreated
+        $m_unread = $DB->get_records_sql("SELECT m.id, m.useridto, m.useridfrom, m.smallmessage, m.fullmessage, m.timecreated
                                             FROM {message} m
                                            WHERE $searchcond", $params, 0, MESSAGE_SEARCH_MAX_RESULTS);
 
@@ -1803,7 +1773,7 @@ function message_get_history($user1, $user2, $limitnum=0, $viewingnewmessages=fa
                                                     array($user1->id, $user2->id, $user2->id, $user1->id, $user1->id),
                                                     "timecreated $sort", '*', 0, $limitnum)) {
         foreach ($messages_read as $message) {
-            $messages[$message->timecreated] = $message;
+            $messages[] = $message;
         }
     }
     if ($messages_new =  $DB->get_records_select('message', "((useridto = ? AND useridfrom = ?) OR
@@ -1811,15 +1781,16 @@ function message_get_history($user1, $user2, $limitnum=0, $viewingnewmessages=fa
                                                     array($user1->id, $user2->id, $user2->id, $user1->id, $user1->id),
                                                     "timecreated $sort", '*', 0, $limitnum)) {
         foreach ($messages_new as $message) {
-            $messages[$message->timecreated] = $message;
+            $messages[] = $message;
         }
     }
 
+    $result = collatorlib::asort_objects_by_property($messages, 'timecreated', collatorlib::SORT_NUMERIC);
+
     //if we only want the last $limitnum messages
-    ksort($messages);
     $messagecount = count($messages);
-    if ($limitnum>0 && $messagecount>$limitnum) {
-        $messages = array_slice($messages, $messagecount-$limitnum, $limitnum, true);
+    if ($limitnum > 0 && $messagecount > $limitnum) {
+        $messages = array_slice($messages, $messagecount - $limitnum, $limitnum, true);
     }
 
     return $messages;
@@ -1848,8 +1819,7 @@ function message_print_message_history($user1,$user2,$search='',$messagelimit=0,
     echo html_writer::end_tag('td');
 
     echo html_writer::start_tag('td', array('align' => 'center'));
-    echo html_writer::empty_tag('img', array('src' => $OUTPUT->pix_url('t/left'), 'alt' => get_string('from')));
-    echo html_writer::empty_tag('img', array('src' => $OUTPUT->pix_url('t/right'), 'alt' => get_string('to')));
+    echo html_writer::empty_tag('img', array('src' => $OUTPUT->pix_url('i/twoway'), 'alt' => ''));
     echo html_writer::end_tag('td');
 
     echo html_writer::start_tag('td', array('align' => 'center', 'id' => 'user2'));
@@ -1969,7 +1939,12 @@ function message_format_message($message, $format='', $keywords='', $class='othe
         $messagetext = highlight($keywords, $messagetext);
     }
 
-    return '<div class="message '.$class.'"><a name="m'.$message->id.'"></a> <span class="time">'.$time.'</span>: <span class="content">'.$messagetext.'</span></div>';
+    return <<<TEMPLATE
+<div class='message $class'>
+    <a name="m'.{$message->id}.'"></a>
+    <span class="message-meta"><span class="time">$time</span></span>: <span class="text">$messagetext</span>
+</div>
+TEMPLATE;
 }
 
 /**
@@ -2031,7 +2006,7 @@ function message_post_message($userfrom, $userto, $message, $format) {
     $eventdata->smallmessage     = $message;//store the message unfiltered. Clean up on output.
 
     $s = new stdClass();
-    $s->sitename = format_string($SITE->shortname, true, array('context' => get_context_instance(CONTEXT_COURSE, SITEID)));
+    $s->sitename = format_string($SITE->shortname, true, array('context' => context_course::instance(SITEID)));
     $s->url = $CFG->wwwroot.'/message/index.php?user='.$userto->id.'&id='.$userfrom->id;
 
     $emailtagline = get_string_manager()->get_string('emailtagline', 'message', $s, $userto->lang);
@@ -2295,6 +2270,36 @@ function get_message_processors($ready = false) {
     }
 
     return $processors;
+}
+
+/**
+ * Get all message providers, validate their plugin existance and
+ * system configuration
+ *
+ * @return mixed $processors array of objects containing information on message processors
+ */
+function get_message_providers() {
+    global $CFG, $DB;
+    require_once($CFG->libdir . '/pluginlib.php');
+    $pluginman = plugin_manager::instance();
+
+    $providers = $DB->get_records('message_providers', null, 'name');
+
+    // Remove all the providers whose plugins are disabled or don't exist
+    foreach ($providers as $providerid => $provider) {
+        $plugin = $pluginman->get_plugin_info($provider->component);
+        if ($plugin) {
+            if ($plugin->get_status() === plugin_manager::PLUGIN_STATUS_MISSING) {
+                unset($providers[$providerid]);   // Plugins does not exist
+                continue;
+            }
+            if ($plugin->is_enabled() === false) {
+                unset($providers[$providerid]);   // Plugin disabled
+                continue;
+            }
+        }
+    }
+    return $providers;
 }
 
 /**

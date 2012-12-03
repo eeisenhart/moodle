@@ -24,8 +24,8 @@
 
 $messageproviders = array (
 
-// Ordinary assignment submissions
-    'assign_updates' => array (
+    // Ordinary assignment submissions
+    'assign_notification' => array(
     )
 
 );

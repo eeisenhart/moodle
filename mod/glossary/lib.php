@@ -60,7 +60,7 @@ function glossary_add_instance($glossary) {
         $glossary->globalglossary = 0;
     }
 
-    if (!has_capability('mod/glossary:manageentries', get_context_instance(CONTEXT_SYSTEM))) {
+    if (!has_capability('mod/glossary:manageentries', context_system::instance())) {
         $glossary->globalglossary = 0;
     }
 
@@ -97,7 +97,7 @@ function glossary_update_instance($glossary) {
         $glossary->globalglossary = 0;
     }
 
-    if (!has_capability('mod/glossary:manageentries', get_context_instance(CONTEXT_SYSTEM))) {
+    if (!has_capability('mod/glossary:manageentries', context_system::instance())) {
         // keep previous
         unset($glossary->globalglossary);
     }
@@ -145,7 +145,7 @@ function glossary_delete_instance($id) {
         return false;
     }
 
-    if (!$context = get_context_instance(CONTEXT_MODULE, $cm->id)) {
+    if (!$context = context_module::instance($cm->id, IGNORE_MISSING)) {
         return false;
     }
 
@@ -163,7 +163,7 @@ function glossary_delete_instance($id) {
             foreach ($exported as $entry) {
                 $entry->glossaryid = $entry->sourceglossaryid;
                 $entry->sourceglossaryid = 0;
-                $newcontext = get_context_instance(CONTEXT_MODULE, $entry->sourcecmid);
+                $newcontext = context_module::instance($entry->sourcecmid);
                 if ($oldfiles = $fs->get_area_files($context->id, 'mod_glossary', 'attachment', $entry->id)) {
                     foreach ($oldfiles as $oldfile) {
                         $file_record = new stdClass();
@@ -405,9 +405,11 @@ function glossary_get_recent_mod_activity(&$activities, &$index, $timestart, $co
         $tmpactivity->name                 = format_string($cm->name, true);
         $tmpactivity->sectionnum           = $cm->sectionnum;
         $tmpactivity->timestamp            = $entry->timemodified;
+        $tmpactivity->content              = new stdClass();
         $tmpactivity->content->entryid     = $entry->entryid;
         $tmpactivity->content->concept     = $entry->concept;
         $tmpactivity->content->definition  = $entry->definition;
+        $tmpactivity->user                 = new stdClass();
         $tmpactivity->user->id             = $entry->userid;
         $tmpactivity->user->firstname      = $entry->firstname;
         $tmpactivity->user->lastname       = $entry->lastname;
@@ -502,7 +504,7 @@ function glossary_print_recent_activity($course, $viewfullnames, $timestart) {
     // generate list of approval capabilities for all glossaries in the course.
     $approvals = array();
     foreach ($ids as $glinstanceid => $glcmid) {
-        $context = get_context_instance(CONTEXT_MODULE, $glcmid);
+        $context = context_module::instance($glcmid);
         if (has_capability('mod/glossary:view', $context)) {
             // get records glossary entries that are approved if user has no capability to approve entries.
             if (has_capability('mod/glossary:approve', $context)) {
@@ -540,7 +542,7 @@ function glossary_print_recent_activity($course, $viewfullnames, $timestart) {
         return false;
     }
 
-    echo $OUTPUT->heading(get_string('newentries', 'glossary').':');
+    echo $OUTPUT->heading(get_string('newentries', 'glossary').':', 3);
     $strftimerecent = get_string('strftimerecent');
     $entrycount = 0;
     foreach ($entries as $entry) {
@@ -557,10 +559,10 @@ function glossary_print_recent_activity($course, $viewfullnames, $timestart) {
             echo '<div class="date">'.userdate($entry->timemodified, $strftimerecent).'</div>';
             echo '<div class="name">'.fullname($entry, $viewfullnames).'</div>';
             echo '</div>';
-            echo '<div class="info"><a href="'.$link.'">'.format_text($entry->concept, true).'</a></div>';
+            echo '<div class="info"><a href="'.$link.'">'.format_string($entry->concept, true).'</a></div>';
             $entrycount += 1;
         } else {
-            $numnewentries = $DB->count_records_sql($countsql.$joins[0].$clausesql.$approvalsql.')', $params);
+            $numnewentries = $DB->count_records_sql($countsql.$joins[0].$clausesql.$approvalsql, $params);
             echo '<div class="head"><div class="activityhead">'.get_string('andmorenewentries', 'glossary', $numnewentries - GLOSSARY_RECENT_ACTIVITY_LIMIT).'</div></div>';
             break;
         }
@@ -635,7 +637,7 @@ function glossary_rating_permissions($contextid, $component, $ratingarea) {
         // default restrictive permissions.
         return null;
     }
-    $context = get_context_instance_by_id($contextid);
+    $context = context::instance_by_id($contextid);
     return array(
         'view'    => has_capability('mod/glossary:viewrating', $context),
         'viewany' => has_capability('mod/glossary:viewanyrating', $context),
@@ -728,7 +730,7 @@ function glossary_rating_validate($params) {
     }
 
     $cm = get_coursemodule_from_instance('glossary', $info->glossaryid, $info->course, false, MUST_EXIST);
-    $context = get_context_instance(CONTEXT_MODULE, $cm->id, MUST_EXIST);
+    $context = context_module::instance($cm->id, MUST_EXIST);
 
     // if the supplied context doesnt match the item's context
     if ($context->id != $params['context']->id) {
@@ -999,13 +1001,13 @@ function glossary_get_entries_search($concept, $courseid) {
 
     //Check if the user is an admin
     $bypassadmin = 1; //This means NO (by default)
-    if (has_capability('moodle/course:viewhiddenactivities', get_context_instance(CONTEXT_SYSTEM))) {
+    if (has_capability('moodle/course:viewhiddenactivities', context_system::instance())) {
         $bypassadmin = 0; //This means YES
     }
 
     //Check if the user is a teacher
     $bypassteacher = 1; //This means NO (by default)
-    if (has_capability('mod/glossary:manageentries', get_context_instance(CONTEXT_COURSE, $courseid))) {
+    if (has_capability('mod/glossary:manageentries', context_course::instance($courseid))) {
         $bypassteacher = 0; //This means YES
     }
 
@@ -1089,7 +1091,7 @@ function glossary_print_entry_default ($entry, $glossary, $cm) {
 
     $definition = '<span class="nolink">' . strip_tags($definition) . '</span>';
 
-    $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+    $context = context_module::instance($cm->id);
     $definition = file_rewrite_pluginfile_urls($definition, 'pluginfile.php', $context->id, 'mod_glossary', 'entry', $entry->id);
 
     $options = new stdClass();
@@ -1108,9 +1110,8 @@ function glossary_print_entry_default ($entry, $glossary, $cm) {
  */
 function  glossary_print_entry_concept($entry, $return=false) {
     global $OUTPUT;
-    $options = new stdClass();
-    $options->para = false;
-    $text = format_text($OUTPUT->heading('<span class="nolink">' . $entry->concept . '</span>', 3, 'nolink'), FORMAT_MOODLE, $options);
+
+    $text = html_writer::tag('h3', format_string($entry->concept));
     if (!empty($entry->highlight)) {
         $text = highlight($entry->highlight, $text);
     }
@@ -1144,7 +1145,7 @@ function glossary_print_entry_definition($entry, $glossary, $cm) {
         }
     }
 
-    $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+    $context = context_module::instance($cm->id);
     $definition = file_rewrite_pluginfile_urls($definition, 'pluginfile.php', $context->id, 'mod_glossary', 'entry', $entry->id);
 
     $options = new stdClass();
@@ -1152,6 +1153,7 @@ function glossary_print_entry_definition($entry, $glossary, $cm) {
     $options->trusted = $entry->definitiontrust;
     $options->context = $context;
     $options->overflowdiv = true;
+
     $text = format_text($definition, $entry->definitionformat, $options);
 
     // Stop excluding concepts from autolinking
@@ -1186,7 +1188,7 @@ function  glossary_print_entry_aliases($course, $cm, $glossary, $entry,$mode='',
         foreach ($aliases as $alias) {
             if (trim($alias->alias)) {
                 if ($return == '') {
-                    $return = '<select style="font-size:8pt">';
+                    $return = '<select id="keyword" style="font-size:8pt">';
                 }
                 $return .= "<option>$alias->alias</option>";
             }
@@ -1219,7 +1221,7 @@ function  glossary_print_entry_aliases($course, $cm, $glossary, $entry,$mode='',
 function glossary_print_entry_icons($course, $cm, $glossary, $entry, $mode='',$hook='', $type = 'print') {
     global $USER, $CFG, $DB, $OUTPUT;
 
-    $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+    $context = context_module::instance($cm->id);
 
     $output = false;   //To decide if we must really return text in "return". Activate when needed only!
     $importedentry = ($entry->sourceglossaryid == $glossary->id);
@@ -1232,7 +1234,8 @@ function glossary_print_entry_icons($course, $cm, $glossary, $entry, $mode='',$h
 
     if (!$entry->approved) {
         $output = true;
-        $return .= get_string('entryishidden','glossary');
+        $return .= html_writer::tag('span', get_string('entryishidden','glossary'),
+            array('class' => 'glossary-hidden-note'));
     }
 
     $iscurrentuser = ($entry->userid == $USER->id);
@@ -1243,7 +1246,7 @@ function glossary_print_entry_icons($course, $cm, $glossary, $entry, $mode='',$h
             $mainglossary = $DB->get_record('glossary', array('mainglossary'=>1,'course'=>$course->id));
             if ( $mainglossary ) {  // if there is a main glossary defined, allow to export the current entry
                 $output = true;
-                $return .= ' <a title="'.get_string('exporttomainglossary','glossary') . '" href="exportentry.php?id='.$entry->id.'&amp;prevmode='.$mode.'&amp;hook='.urlencode($hook).'"><img src="'.$OUTPUT->pix_url('export', 'glossary').'" class="iconsmall" alt="'.get_string('exporttomainglossary','glossary').$altsuffix.'" /></a>';
+                $return .= '<a class="action-icon" title="'.get_string('exporttomainglossary','glossary') . '" href="exportentry.php?id='.$entry->id.'&amp;prevmode='.$mode.'&amp;hook='.urlencode($hook).'"><img src="'.$OUTPUT->pix_url('export', 'glossary').'" class="smallicon" alt="'.get_string('exporttomainglossary','glossary').$altsuffix.'" /></a>';
             }
         }
 
@@ -1259,28 +1262,30 @@ function glossary_print_entry_icons($course, $cm, $glossary, $entry, $mode='',$h
         $ineditperiod = ((time() - $entry->timecreated <  $CFG->maxeditingtime) || $glossary->editalways);
         if ( !$importedentry and (has_capability('mod/glossary:manageentries', $context) or ($entry->userid == $USER->id and ($ineditperiod and has_capability('mod/glossary:write', $context))))) {
             $output = true;
-            $return .= " <a title=\"" . get_string("delete") . "\" href=\"deleteentry.php?id=$cm->id&amp;mode=delete&amp;entry=$entry->id&amp;prevmode=$mode&amp;hook=".urlencode($hook)."\"><img src=\"";
+            $return .= "<a class='action-icon' title=\"" . get_string("delete") . "\" href=\"deleteentry.php?id=$cm->id&amp;mode=delete&amp;entry=$entry->id&amp;prevmode=$mode&amp;hook=".urlencode($hook)."\"><img src=\"";
             $return .= $icon;
-            $return .= "\" class=\"iconsmall\" alt=\"" . get_string("delete") .$altsuffix."\" /></a> ";
+            $return .= "\" class=\"smallicon\" alt=\"" . get_string("delete") .$altsuffix."\" /></a>";
 
-            $return .= " <a title=\"" . get_string("edit") . "\" href=\"edit.php?cmid=$cm->id&amp;id=$entry->id&amp;mode=$mode&amp;hook=".urlencode($hook)."\"><img src=\"" . $OUTPUT->pix_url('t/edit') . "\" class=\"iconsmall\" alt=\"" . get_string("edit") .$altsuffix. "\" /></a>";
+            $return .= "<a class='action-icon' title=\"" . get_string("edit") . "\" href=\"edit.php?cmid=$cm->id&amp;id=$entry->id&amp;mode=$mode&amp;hook=".urlencode($hook)."\"><img src=\"" . $OUTPUT->pix_url('t/edit') . "\" class=\"smallicon\" alt=\"" . get_string("edit") .$altsuffix. "\" /></a>";
         } elseif ( $importedentry ) {
-            $return .= " <font size=\"-1\">" . get_string("exportedentry","glossary") . "</font>";
+            $return .= "<font size=\"-1\">" . get_string("exportedentry","glossary") . "</font>";
         }
     }
     if (!empty($CFG->enableportfolios) && (has_capability('mod/glossary:exportentry', $context) || ($iscurrentuser && has_capability('mod/glossary:exportownentry', $context)))) {
         require_once($CFG->libdir . '/portfoliolib.php');
         $button = new portfolio_add_button();
-        $button->set_callback_options('glossary_entry_portfolio_caller',  array('id' => $cm->id, 'entryid' => $entry->id), '/mod/glossary/locallib.php');
+        $button->set_callback_options('glossary_entry_portfolio_caller',  array('id' => $cm->id, 'entryid' => $entry->id), 'mod_glossary');
 
         $filecontext = $context;
         if ($entry->sourceglossaryid == $cm->instance) {
             if ($maincm = get_coursemodule_from_instance('glossary', $entry->glossaryid)) {
-                $filecontext = get_context_instance(CONTEXT_MODULE, $maincm->id);
+                $filecontext = context_module::instance($maincm->id);
             }
         }
         $fs = get_file_storage();
-        if ($files = $fs->get_area_files($filecontext->id, 'mod_glossary', 'attachment', $entry->id, "timemodified", false)) {
+        if ($files = $fs->get_area_files($filecontext->id, 'mod_glossary', 'attachment', $entry->id, "timemodified", false)
+         || $files = $fs->get_area_files($filecontext->id, 'mod_glossary', 'entry', $entry->id, "timemodified", false)) {
+
             $button->set_formats(PORTFOLIO_FORMAT_RICHHTML);
         } else {
             $button->set_formats(PORTFOLIO_FORMAT_PLAINHTML);
@@ -1288,8 +1293,6 @@ function glossary_print_entry_icons($course, $cm, $glossary, $entry, $mode='',$h
 
         $return .= $button->to_html(PORTFOLIO_ADD_ICON_LINK);
     }
-    $return .= "&nbsp;&nbsp;"; // just to make up a little the output in Mozilla ;)
-
     $return .= '</span>';
 
     if (!empty($CFG->usecomments) && has_capability('mod/glossary:comment', $context) and $glossary->allowcomments) {
@@ -1342,7 +1345,8 @@ function  glossary_print_entry_lower_section($course, $cm, $glossary, $entry, $m
         echo '<table>';
         if ( $aliases ) {
             echo '<tr valign="top"><td class="aliases">' .
-                  get_string('aliases','glossary').': '.$aliases . '</td></tr>';
+                 '<label for="keyword">' . get_string('aliases','glossary').': </label>' .
+                 $aliases . '</td></tr>';
         }
         if ($icons) {
             echo '<tr valign="top"><td class="icons">'.$icons.'</td></tr>';
@@ -1389,7 +1393,11 @@ function  glossary_print_entry_approval($cm, $entry, $mode, $align="right", $ins
         if ($insidetable) {
             echo '<table class="glossaryapproval" align="'.$align.'"><tr><td align="'.$align.'">';
         }
-        echo '<a title="'.get_string('approve','glossary').'" href="approve.php?eid='.$entry->id.'&amp;mode='.$mode.'&amp;sesskey='.sesskey().'"><img align="'.$align.'" src="'.$OUTPUT->pix_url('i/approve') . '" style="border:0px; width:34px; height:34px" alt="'.get_string('approve','glossary').'" /></a>';
+        echo $OUTPUT->action_icon(
+            new moodle_url('approve.php', array('eid' => $entry->id, 'mode' => $mode, 'sesskey' => sesskey())),
+            new pix_icon('t/approve', get_string('approve','glossary'), '',
+                array('class' => 'iconsmall', 'align' => $align))
+        );
         if ($insidetable) {
             echo '</td></tr></table>';
         }
@@ -1424,7 +1432,7 @@ function glossary_search($course, $searchterms, $extended = 0, $glossary = NULL)
         $glos = $glossary->id;
     }
 
-    if (!has_capability('mod/glossary:manageentries', get_context_instance(CONTEXT_COURSE, $glossary->course))) {
+    if (!has_capability('mod/glossary:manageentries', context_course::instance($glossary->course))) {
         $glossarymodule = $DB->get_record("modules", array("name"=>"glossary"));
         $onlyvisible = " AND g.id = cm.instance AND cm.visible = 1 AND cm.module = $glossarymodule->id";
         $onlyvisibletable = ", {course_modules} cm";
@@ -1528,7 +1536,7 @@ function glossary_search_entries($searchterms, $glossary, $extended) {
 function glossary_print_attachments($entry, $cm, $type=NULL, $align="left") {
     global $CFG, $DB, $OUTPUT;
 
-    if (!$context = get_context_instance(CONTEXT_MODULE, $cm->id)) {
+    if (!$context = context_module::instance($cm->id, IGNORE_MISSING)) {
         return '';
     }
 
@@ -1536,7 +1544,7 @@ function glossary_print_attachments($entry, $cm, $type=NULL, $align="left") {
         if (!$maincm = get_coursemodule_from_instance('glossary', $entry->glossaryid)) {
             return '';
         }
-        $filecontext = get_context_instance(CONTEXT_MODULE, $maincm->id);
+        $filecontext = context_module::instance($maincm->id);
 
     } else {
         $filecontext = $context;
@@ -1620,18 +1628,14 @@ function glossary_get_file_areas($course, $cm, $context) {
  * @param string $filename
  * @return file_info_stored file_info_stored instance or null if not found
  */
-function mod_glossary_get_file_info($browser, $areas, $course, $cm, $context, $filearea, $itemid, $filepath, $filename) {
-    global $CFG, $DB;
+function glossary_get_file_info($browser, $areas, $course, $cm, $context, $filearea, $itemid, $filepath, $filename) {
+    global $CFG, $DB, $USER;
 
     if ($context->contextlevel != CONTEXT_MODULE) {
         return null;
     }
 
     if (!isset($areas[$filearea])) {
-        return null;
-    }
-
-    if (!has_capability('moodle/course:managefiles', $context)) {
         return null;
     }
 
@@ -1659,7 +1663,7 @@ function mod_glossary_get_file_info($browser, $areas, $course, $cm, $context, $f
         if (!$maincm = get_coursemodule_from_instance('glossary', $entry->glossaryid)) {
             return null;
         }
-        $filecontext = get_context_instance(CONTEXT_MODULE, $maincm->id);
+        $filecontext = context_module::instance($maincm->id);
     } else {
         return null;
     }
@@ -1670,6 +1674,13 @@ function mod_glossary_get_file_info($browser, $areas, $course, $cm, $context, $f
     if (!($storedfile = $fs->get_file($filecontext->id, 'mod_glossary', $filearea, $itemid, $filepath, $filename))) {
         return null;
     }
+
+    // Checks to see if the user can manage files or is the owner.
+    // TODO MDL-33805 - Do not use userid here and move the capability check above.
+    if (!has_capability('moodle/course:managefiles', $context) && $storedfile->get_userid() != $USER->id) {
+        return null;
+    }
+
     $urlbase = $CFG->wwwroot.'/pluginfile.php';
 
     return new file_info_stored($browser, $filecontext, $storedfile, $urlbase, s($entry->concept), true, true, false, false);
@@ -1724,7 +1735,7 @@ function glossary_pluginfile($course, $cm, $context, $filearea, $args, $forcedow
             if (!$maincm = get_coursemodule_from_instance('glossary', $entry->glossaryid)) {
                 return false;
             }
-            $filecontext = get_context_instance(CONTEXT_MODULE, $maincm->id);
+            $filecontext = context_module::instance($maincm->id);
 
         } else {
             return false;
@@ -1860,7 +1871,7 @@ function glossary_print_author_menu($cm, $glossary,$mode, $hook, $sortkey = '', 
 function glossary_print_categories_menu($cm, $glossary, $hook, $category) {
      global $CFG, $DB, $OUTPUT;
 
-     $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+     $context = context_module::instance($cm->id);
 
     // Prepare format_string/text options
     $fmtoptions = array(
@@ -1921,6 +1932,7 @@ function glossary_print_categories_menu($cm, $glossary, $hook, $category) {
      echo '<td align="center" style="width:20%">';
 
      $select = new single_select(new moodle_url("/mod/glossary/view.php", array('id'=>$cm->id, 'mode'=>'cat')), 'hook', $menu, $selected, null, "catmenu");
+     $select->set_label(get_string('categories', 'glossary'), array('class' => 'accesshide'));
      echo $OUTPUT->render($select);
 
      echo '</td>';
@@ -2730,7 +2742,7 @@ function glossary_reset_userdata($data) {
                 if (!$cm = get_coursemodule_from_instance('glossary', $glossaryid)) {
                     continue;
                 }
-                $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+                $context = context_module::instance($cm->id);
                 $fs->delete_area_files($context->id, 'mod_glossary', 'attachment');
 
                 //delete ratings
@@ -2763,7 +2775,7 @@ function glossary_reset_userdata($data) {
                     if (!$cm = get_coursemodule_from_instance('glossary', $glossaryid)) {
                         continue;
                     }
-                    $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+                    $context = context_module::instance($cm->id);
                     $fs->delete_area_files($context->id, 'mod_glossary', 'attachment');
 
                     //delete ratings
@@ -2793,7 +2805,7 @@ function glossary_reset_userdata($data) {
                     if (!$cm = get_coursemodule_from_instance('glossary', $glossaryid)) {
                         continue;
                     }
-                    $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+                    $context = context_module::instance($cm->id);
                     $fs->delete_area_files($context->id, 'mod_glossary', 'attachment');
 
                     //delete ratings
@@ -2819,7 +2831,7 @@ function glossary_reset_userdata($data) {
                               LEFT JOIN {user} u ON e.userid = u.id
                         WHERE g.course = ? AND e.userid > 0";
 
-        $course_context = get_context_instance(CONTEXT_COURSE, $data->courseid);
+        $course_context = context_course::instance($data->courseid);
         $notenrolled = array();
         $rs = $DB->get_recordset_sql($entriessql, $params);
         if ($rs->valid()) {
@@ -2830,7 +2842,7 @@ function glossary_reset_userdata($data) {
                     $DB->delete_records('glossary_entries', array('id'=>$entry->id));
 
                     if ($cm = get_coursemodule_from_instance('glossary', $entry->glossaryid)) {
-                        $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+                        $context = context_module::instance($cm->id);
                         $fs->delete_area_files($context->id, 'mod_glossary', 'attachment', $entry->id);
 
                         //delete ratings
@@ -2852,7 +2864,7 @@ function glossary_reset_userdata($data) {
                 if (!$cm = get_coursemodule_from_instance('glossary', $glossaryid)) {
                     continue;
                 }
-                $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+                $context = context_module::instance($cm->id);
 
                 //delete ratings
                 $ratingdeloptions->contextid = $context->id;
@@ -3059,7 +3071,7 @@ function glossary_comment_validate($comment_param) {
     if (!$cm = get_coursemodule_from_instance('glossary', $glossary->id, $course->id)) {
         throw new comment_exception('invalidcoursemodule');
     }
-    $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+    $context = context_module::instance($cm->id);
 
     if ($glossary->defaultapproval and !$record->approved and !has_capability('mod/glossary:approve', $context)) {
         throw new comment_exception('notapproved', 'glossary');

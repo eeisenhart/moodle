@@ -130,7 +130,7 @@ abstract class qtype_renderer extends plugin_renderer_base {
     }
 
     /**
-     * Gereate the specific feedback. This is feedback that varies accordin to
+     * Generate the specific feedback. This is feedback that varies according to
      * the reponse the student gave.
      * @param question_attempt $qa the question attempt to display.
      * @return string HTML fragment.
@@ -157,7 +157,7 @@ abstract class qtype_renderer extends plugin_renderer_base {
     }
 
     /**
-     * Gereate the specific feedback. This is feedback that varies accordin to
+     * Gereate the specific feedback. This is feedback that varies according to
      * the reponse the student gave.
      * @param question_attempt $qa the question attempt to display.
      * @return string HTML fragment.
@@ -229,16 +229,11 @@ abstract class qtype_renderer extends plugin_renderer_base {
         $state = question_state::graded_state_for_fraction($fraction);
 
         if ($state == question_state::$gradedright) {
-            $icon = 'tick_green';
+            $icon = 'grade_correct';
         } else if ($state == question_state::$gradedpartial) {
-            $icon = 'tick_amber';
+            $icon = 'grade_partiallycorrect';
         } else {
-            $icon = 'cross_red';
-        }
-        if ($selected) {
-            $icon .= '_big';
-        } else {
-            $icon .= '_small';
+            $icon = 'grade_incorrect';
         }
 
         $attributes = array(

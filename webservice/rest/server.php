@@ -37,19 +37,12 @@ require('../../config.php');
 require_once("$CFG->dirroot/webservice/rest/locallib.php");
 
 if (!webservice_protocol_is_enabled('rest')) {
+    debugging('The server died because the web services or the REST protocol are not enable',
+        DEBUG_DEVELOPER);
     die;
 }
 
-$restformat = optional_param('moodlewsrestformat', 'xml', PARAM_ALPHA);
-//remove the alt from the request
-if(isset($_GET['moodlewsrestformat'])) {
-    unset($_GET['moodlewsrestformat']);
-}
-if(isset($_POST['moodlewsrestformat'])) {
-    unset($_POST['moodlewsrestformat']);
-}
-
-$server = new webservice_rest_server(WEBSERVICE_AUTHMETHOD_PERMANENT_TOKEN, $restformat);
+$server = new webservice_rest_server(WEBSERVICE_AUTHMETHOD_PERMANENT_TOKEN);
 $server->run();
 die;
 

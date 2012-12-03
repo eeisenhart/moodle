@@ -1,5 +1,5 @@
 <?php
-// This file is part of Book module for Moodle - http://moodle.org/
+// This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -77,7 +77,7 @@ if ($chapter) {
         require_capability('mod/book:viewhiddenchapters', $context);
     }
 
-    add_to_log($course->id, 'book', 'print', 'tool/print/index.php?id='.$cm->id.'&chapterid='.$chapter->id, $book->id, $cm->id);
+    add_to_log($course->id, 'book', 'print chapter', 'tool/print/index.php?id='.$cm->id.'&chapterid='.$chapter->id, $chapter->id, $cm->id);
 
     // page header
     ?>
@@ -91,6 +91,7 @@ if ($chapter) {
     </head>
     <body>
     <a name="top"></a>
+    <h1 class="book_title"><?php echo format_string($book->name, true, array('context'=>$context)) ?></h1>
     <div class="chapter">
     <?php
 
@@ -98,11 +99,11 @@ if ($chapter) {
     if (!$book->customtitles) {
         if (!$chapter->subchapter) {
             $currtitle = book_get_chapter_title($chapter->id, $chapters, $book, $context);
-            echo '<p class="book_chapter_title">'.$currtitle.'</p>';
+            echo '<h2 class="book_chapter_title">'.$currtitle.'</h2>';
         } else {
             $currtitle = book_get_chapter_title($chapters[$chapter->id]->parent, $chapters, $book, $context);
             $currsubtitle = book_get_chapter_title($chapter->id, $chapters, $book, $context);
-            echo '<p class="book_chapter_title">'.$currtitle.'<br />'.$currsubtitle.'</p>';
+            echo '<h2 class="book_chapter_title">'.$currtitle.'</h2><h3 class="book_chapter_title">'.$currsubtitle.'</h3>';
         }
     }
 
@@ -114,6 +115,7 @@ if ($chapter) {
 } else {
     add_to_log($course->id, 'book', 'print', 'tool/print/index.php?id='.$cm->id, $book->id, $cm->id);
     $allchapters = $DB->get_records('book_chapters', array('bookid'=>$book->id), 'pagenum');
+    $book->intro = file_rewrite_pluginfile_urls($book->intro, 'pluginfile.php', $context->id, 'mod_book', 'intro', null);
 
     // page header
     ?>
@@ -127,7 +129,7 @@ if ($chapter) {
     </head>
     <body>
     <a name="top"></a>
-    <p class="book_title"><?php echo format_string($book->name, true, array('context'=>$context)) ?></p>
+    <h1 class="book_title"><?php echo format_string($book->name, true, array('context'=>$context)) ?></h1>
     <p class="book_summary"><?php echo format_text($book->intro, $book->introformat, array('noclean'=>true, 'context'=>$context)) ?></p>
     <div class="book_info"><table>
     <tr>
@@ -161,7 +163,11 @@ if ($chapter) {
         }
         echo '<div class="book_chapter"><a name="ch'.$ch->id.'"></a>';
         if (!$book->customtitles) {
-            echo '<p class="book_chapter_title">'.$titles[$ch->id].'</p>';
+            if (!$chapter->subchapter) {
+                echo '<h2 class="book_chapter_title">'.$titles[$ch->id].'</h2>';
+            } else {
+                echo '<h3 class="book_chapter_title">'.$titles[$ch->id].'</h3>';
+            }
         }
         $content = str_replace($link1, '#ch', $chapter->content);
         $content = str_replace($link2, '#top', $content);

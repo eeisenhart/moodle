@@ -423,33 +423,38 @@ abstract class data_loading_method_test_base extends advanced_testcase {
 
 abstract class question_testcase extends advanced_testcase {
 
-    public function assert($expectation, $compare, $message = '') {
-        $message = (isset($expectation->message) and $expectation->message !== '') ? $expectation->message : $message;
+    public function assert($expectation, $compare, $notused = '') {
 
         if (get_class($expectation) === 'question_pattern_expectation') {
-            $this->assertRegExp($expectation->pattern, $compare, $message);
+            $this->assertRegExp($expectation->pattern, $compare,
+                    'Expected regex ' . $expectation->pattern . ' not found in ' . $compare);
             return;
 
         } else if (get_class($expectation) === 'question_no_pattern_expectation') {
-            $this->assertNotRegExp($expectation->pattern, $compare, $message);
+            $this->assertNotRegExp($expectation->pattern, $compare,
+                    'Unexpected regex ' . $expectation->pattern . ' found in ' . $compare);
             return;
 
         } else if (get_class($expectation) === 'question_contains_tag_with_attributes') {
-            $this->assertTag(array('tag'=>$expectation->tag, 'attributes'=>$expectation->expectedvalues), $compare, $message);
+            $this->assertTag(array('tag'=>$expectation->tag, 'attributes'=>$expectation->expectedvalues), $compare,
+                    'Looking for a ' . $expectation->tag . ' with attributes ' . html_writer::attributes($expectation->expectedvalues) . ' in ' . $compare);
             foreach ($expectation->forbiddenvalues as $k=>$v) {
                 $attr = $expectation->expectedvalues;
                 $attr[$k] = $v;
-                $this->assertNotTag(array('tag'=>$expectation->tag, 'attributes'=>$attr), $compare, $message);
+                $this->assertNotTag(array('tag'=>$expectation->tag, 'attributes'=>$attr), $compare,
+                        $expectation->tag . ' had a ' . $k . ' attribute that should not be there in ' . $compare);
             }
             return;
 
         } else if (get_class($expectation) === 'question_contains_tag_with_attribute') {
             $attr = array($expectation->attribute=>$expectation->value);
-            $this->assertTag(array('tag'=>$expectation->tag, 'attributes'=>$attr), $compare, $message);
+            $this->assertTag(array('tag'=>$expectation->tag, 'attributes'=>$attr), $compare,
+                    'Looking for a ' . $expectation->tag . ' with attribute ' . html_writer::attributes($attr) . ' in ' . $compare);
             return;
 
         } else if (get_class($expectation) === 'question_does_not_contain_tag_with_attributes') {
-            $this->assertNotTag(array('tag'=>$expectation->tag, 'attributes'=>$expectation->attributes), $compare, $message);
+            $this->assertNotTag(array('tag'=>$expectation->tag, 'attributes'=>$expectation->attributes), $compare,
+                    'Unexpected ' . $expectation->tag . ' with attributes ' . html_writer::attributes($expectation->attributes) . ' found in ' . $compare);
             return;
 
         } else if (get_class($expectation) === 'question_contains_select_expectation') {
@@ -476,23 +481,18 @@ abstract class question_testcase extends advanced_testcase {
             $compare = (array)$compare;
             foreach ($expect as $k=>$v) {
                 if (!array_key_exists($k, $compare)) {
-                    if (!$message) {
-                        $message = "Property $k does not exist";
-                    }
-                    $this->fail($message);
+                    $this->fail("Property $k does not exist");
                 }
                 if ($v != $compare[$k]) {
-                    if (!$message) {
-                        $message = "Property $k is different";
-                    }
-                    $this->fail($message);
+                    $this->fail("Property $k is different");
                 }
             }
             $this->assertTrue(true);
             return;
 
         } else if (get_class($expectation) === 'question_contains_tag_with_contents') {
-            $this->assertTag(array('tag'=>$expectation->tag, 'content'=>$expectation->content), $compare, $message);
+            $this->assertTag(array('tag'=>$expectation->tag, 'content'=>$expectation->content), $compare,
+                    'Looking for a ' . $expectation->tag . ' with content ' . $expectation->content . ' in ' . $compare);
             return;
         }
 
@@ -628,7 +628,7 @@ abstract class qbehaviour_walkthrough_test_base extends question_testcase {
 
         $this->displayoptions = new question_display_options();
         $this->quba = question_engine::make_questions_usage_by_activity('unit_test',
-            get_context_instance(CONTEXT_SYSTEM));
+            context_system::instance());
     }
 
     protected function tearDown() {
@@ -652,8 +652,8 @@ abstract class qbehaviour_walkthrough_test_base extends question_testcase {
     }
 
     protected function check_current_state($state) {
-        $this->assertEquals($this->quba->get_question_state($this->slot), $state,
-            'Questions is in the wrong state: %s.');
+        $this->assertEquals($state, $this->quba->get_question_state($this->slot),
+            'Questions is in the wrong state.');
     }
 
     protected function check_current_mark($mark) {
@@ -666,7 +666,7 @@ abstract class qbehaviour_walkthrough_test_base extends question_testcase {
                 $this->assertNotNull($this->quba->get_question_mark($this->slot));
             }
             $this->assertEquals($mark, $this->quba->get_question_mark($this->slot),
-                'Expected mark and actual mark differ: %s.', 0.000001);
+                'Expected mark and actual mark differ.', 0.000001);
         }
     }
 

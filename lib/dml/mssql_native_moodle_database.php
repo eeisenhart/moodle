@@ -1,5 +1,4 @@
 <?php
-
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -15,27 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-
 /**
  * Native mssql class representing moodle database interface.
  *
- * @package    core
- * @subpackage dml_driver
+ * @package    core_dml
  * @copyright  2009 onwards Eloy Lafuente (stronk7) {@link http://stronk7.com}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->libdir.'/dml/moodle_database.php');
-require_once($CFG->libdir.'/dml/mssql_native_moodle_recordset.php');
-require_once($CFG->libdir.'/dml/mssql_native_moodle_temptables.php');
+require_once(__DIR__.'/moodle_database.php');
+require_once(__DIR__.'/mssql_native_moodle_recordset.php');
+require_once(__DIR__.'/mssql_native_moodle_temptables.php');
 
 /**
  * Native mssql class representing moodle database interface.
  *
- * @package    core
- * @subpackage dml_driver
+ * @package    core_dml
  * @copyright  2009 onwards Eloy Lafuente (stronk7) {@link http://stronk7.com}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -335,7 +331,7 @@ class mssql_native_moodle_database extends moodle_database {
         }
         $this->tables = array();
         $sql = "SELECT table_name
-                  FROM information_schema.tables
+                  FROM INFORMATION_SCHEMA.TABLES
                  WHERE table_name LIKE '$this->prefix%'
                    AND table_type = 'BASE TABLE'";
         $this->query_start($sql, null, SQL_QUERY_AUX);
@@ -430,7 +426,7 @@ class mssql_native_moodle_database extends moodle_database {
                            columnproperty(object_id(quotename(table_schema) + '.' +
                                quotename(table_name)), column_name, 'IsIdentity') AS auto_increment,
                            column_default AS default_value
-                      FROM information_schema.columns
+                      FROM INFORMATION_SCHEMA.COLUMNS
                      WHERE table_name = '{" . $table . "}'
                   ORDER BY ordinal_position";
         } else { // temp table, get metadata from tempdb schema
@@ -443,7 +439,7 @@ class mssql_native_moodle_database extends moodle_database {
                            columnproperty(object_id(quotename(table_schema) + '.' +
                                quotename(table_name)), column_name, 'IsIdentity') AS auto_increment,
                            column_default AS default_value
-                      FROM tempdb.information_schema.columns
+                      FROM tempdb.INFORMATION_SCHEMA.COLUMNS
                       JOIN tempdb..sysobjects ON name = table_name
                      WHERE id = object_id('tempdb..{" . $table . "}')
                   ORDER BY ordinal_position";
@@ -515,7 +511,7 @@ class mssql_native_moodle_database extends moodle_database {
     protected function normalise_value($column, $value) {
         $this->detect_objects($value);
 
-        if (is_bool($value)) { /// Always, convert boolean to int
+        if (is_bool($value)) { // Always, convert boolean to int
             $value = (int)$value;
         } // And continue processing because text columns with numeric info need special handling below
 
@@ -619,7 +615,7 @@ class mssql_native_moodle_database extends moodle_database {
         if (empty($params)) {
             return $sql;
         }
-        /// ok, we have verified sql statement with ? and correct number of params
+        // ok, we have verified sql statement with ? and correct number of params
         $parts = explode('?', $sql);
         $return = array_shift($parts);
         foreach ($params as $param) {
@@ -826,7 +822,7 @@ class mssql_native_moodle_database extends moodle_database {
         } else {
             unset($params['id']);
             if ($returnid) {
-                $returning = "; SELECT SCOPE_IDENTITY()";
+                $returning = "OUTPUT inserted.id";
             }
         }
 
@@ -838,18 +834,29 @@ class mssql_native_moodle_database extends moodle_database {
         $qms    = array_fill(0, count($params), '?');
         $qms    = implode(',', $qms);
 
-        $sql = "INSERT INTO {" . $table . "} ($fields) VALUES($qms) $returning";
+        $sql = "INSERT INTO {" . $table . "} ($fields) $returning VALUES ($qms)";
 
         list($sql, $params, $type) = $this->fix_sql_params($sql, $params);
         $rawsql = $this->emulate_bound_params($sql, $params);
 
         $this->query_start($sql, $params, SQL_QUERY_INSERT);
         $result = mssql_query($rawsql, $this->mssql);
-        $this->query_end($result);
+        // Expected results are:
+        //     - true: insert ok and there isn't returned information.
+        //     - false: insert failed and there isn't returned information.
+        //     - resource: insert executed, need to look for returned (output)
+        //           values to know if the insert was ok or no. Posible values
+        //           are false = failed, integer = insert ok, id returned.
+        $end = false;
+        if (is_bool($result)) {
+            $end = $result;
+        } else if (is_resource($result)) {
+            $end = mssql_result($result, 0, 0); // Fetch 1st column from 1st row.
+        }
+        $this->query_end($end); // End the query with the calculated $end.
 
         if ($returning !== "") {
-            $row = mssql_fetch_assoc($result);
-            $params['id'] = reset($row);
+            $params['id'] = $end;
         }
         $this->free_result($result);
 
@@ -1028,7 +1035,7 @@ class mssql_native_moodle_database extends moodle_database {
         // convert params to ? types
         list($select, $params, $type) = $this->fix_sql_params($select, $params);
 
-    /// Get column metadata
+        // Get column metadata
         $columns = $this->get_columns($table);
         $column = $columns[$newfield];
 
@@ -1082,8 +1089,6 @@ class mssql_native_moodle_database extends moodle_database {
 
         return true;
     }
-
-/// SQL helper functions
 
     public function sql_cast_char2int($fieldname, $text=false) {
         if (!$text) {
@@ -1240,8 +1245,6 @@ s only returning name of SQL substring function, it now requires all parameters.
         }
     }
 
-/// session locking
-
     public function session_lock_supported() {
         return true;
     }
@@ -1293,6 +1296,10 @@ s only returning name of SQL substring function, it now requires all parameters.
         if (!$this->session_lock_supported()) {
             return;
         }
+        if (!$this->used_for_db_sessions) {
+            return;
+        }
+
         parent::release_session_lock($rowid);
 
         $fullname = $this->dbname.'-'.$this->prefix.'-session-'.$rowid;
@@ -1303,8 +1310,6 @@ s only returning name of SQL substring function, it now requires all parameters.
 
         $this->free_result($result);
     }
-
-/// transactions
 
     /**
      * Driver specific start of real database transaction,

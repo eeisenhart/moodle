@@ -22,8 +22,10 @@ $string['backoldversion'] = 'Back to old version';
 $string['backpage'] = 'Back to page';
 $string['backtomapmenu'] = 'Back to map menu';
 $string['changerate'] = 'Do you wish to change it?';
+$string['cannoteditpage'] = 'You can not edit this page.';
 $string['cannotmanagefiles'] = 'You don\'t have permission to manage the wiki files.';
 $string['cannotviewfiles'] = 'You don\'t have permission to view the wiki files.';
+$string['cannotviewpage'] = 'You can not view this page.';
 $string['comparesel'] = 'Compare selected';
 $string['comments'] = 'Comments';
 $string['commentscount'] = 'Comments ({$a})';
@@ -59,6 +61,7 @@ $string['editfiles'] = 'Edit wiki files';
 $string['editing'] = 'Editing wiki page';
 $string['editingcomment'] = 'Editing comment';
 $string['editingpage'] = 'Editing this page \'{$a}\'';
+$string['editsection'] = 'edit';
 $string['files'] = 'Files';
 $string['filenotuploadederror'] = 'File \'{$a}\' could not be uploaded correctly.';
 $string['filtername'] = 'Wiki auto-linking';
@@ -115,11 +118,11 @@ A history of previous versions of each page in the wiki is kept, listing the edi
 
 Wikis have many uses, such as
 
-* For group lecture notes
+* For group lecture notes or study guides
 * For members of a faculty to plan a scheme of work or meeting agenda together
 * For students to collaboratively author an online book, creating content on a topic set by their tutor
 * For collaborative storytelling or poetry creation, where each participant writes a line or verse
-* As a personal journal for examination notes or revision (individual wiki)';
+* As a personal journal for examination notes or revision (using an individual wiki)';
 $string['modulename_link'] = 'mod/wiki/view';
 $string['modulenameplural'] = 'Wikis';
 $string['navigation'] = 'Navigation';
@@ -169,6 +172,7 @@ $string['pageindex_help'] = 'This wiki\'s page tree';
 $string['pageislocked'] = 'Someone is editing this page right now. Try to edit it in a few minutes.';
 $string['pagelist'] = 'Page list';
 $string['pagelist_help'] = 'Page list categorized by alphabetical order';
+$string['pagename'] = 'Page name';
 $string['peerreview'] = 'Peer review';
 $string['pluginadministration'] = 'Wiki administration';
 $string['pluginname'] = 'Wiki';
@@ -195,6 +199,7 @@ $string['searchcontent'] = 'Search in page content';
 $string['searchresult'] = 'Search results:';
 $string['searchwikis'] = 'Search wikis';
 $string['special'] = 'Special';
+$string['tableofcontents'] = 'Table of contents';
 $string['tagsdeleted'] = 'Wiki tags have been deleted';
 $string['tagtitle'] = 'See the "{$a}" tag';
 $string['teacherrating'] = 'Teacher rating';

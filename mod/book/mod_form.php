@@ -1,5 +1,5 @@
 <?php
-// This file is part of Book module for Moodle - http://moodle.org/
+// This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -45,7 +45,7 @@ class mod_book_mod_form extends moodleform_mod {
             $mform->setType('name', PARAM_CLEANHTML);
         }
         $mform->addRule('name', null, 'required', null, 'client');
-        $this->add_intro_editor($config->requiremodintro, get_string('summary'));
+        $this->add_intro_editor($config->requiremodintro, get_string('moduleintro'));
 
         $alloptions = book_get_numbering_types();
         $allowed = explode(',', $config->numberingoptions);

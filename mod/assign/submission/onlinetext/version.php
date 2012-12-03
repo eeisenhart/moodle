@@ -22,7 +22,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-$plugin->version   = 2012011600;
-$plugin->requires  = 2011110200;
+defined('MOODLE_INTERNAL') || die();
 
+$plugin->version   = 2012112900;
+$plugin->requires  = 2012112900;
 $plugin->component = 'assignsubmission_onlinetext';

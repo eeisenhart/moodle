@@ -45,7 +45,6 @@ class mod_assign_grading_batch_operations_form extends moodleform {
         $mform = $this->_form;
         $instance = $this->_customdata;
 
-        $mform->addElement('header', 'general', get_string('batchoperations', 'assign'));
         // visible elements
         $options = array();
         $options['lock'] = get_string('locksubmissions', 'assign');
@@ -53,14 +52,28 @@ class mod_assign_grading_batch_operations_form extends moodleform {
         if ($instance['submissiondrafts']) {
             $options['reverttodraft'] = get_string('reverttodraft', 'assign');
         }
-        $mform->addElement('select', 'operation', get_string('batchoperationsdescription', 'assign'), $options, array('class'=>'operation ignoredirty'));
-        $mform->addHelpButton('operation', 'batchoperationsdescription', 'assign');
-        $mform->addElement('hidden', 'action', 'batchgradingoperation');
+        if ($instance['duedate']) {
+            $options['grantextension'] = get_string('grantextension', 'assign');
+        }
+
+        foreach ($instance['feedbackplugins'] as $plugin) {
+            if ($plugin->is_visible() && $plugin->is_enabled()) {
+                foreach ($plugin->get_grading_batch_operations() as $action => $description) {
+                    $options['plugingradingbatchoperation_' . $plugin->get_type() . '_' . $action] = $description;
+                }
+            }
+        }
+
+        $mform->addElement('hidden', 'action', 'gradingbatchoperation');
         $mform->addElement('hidden', 'id', $instance['cm']);
         $mform->addElement('hidden', 'selectedusers', '', array('class'=>'selectedusers'));
         $mform->addElement('hidden', 'returnaction', 'grading');
 
-        $mform->addElement('submit', 'submit', get_string('submit'));
+        $objs = array();
+        $objs[] =& $mform->createElement('select', 'operation', '', $options);
+        $objs[] =& $mform->createElement('submit', 'submit', get_string('go'));
+        $mform->addElement('group', 'actionsgrp', get_string('batchoperationsdescription', 'assign'), $objs, ' ', false);
+
     }
 
 }

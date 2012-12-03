@@ -272,7 +272,7 @@ class file_storage {
     public function get_file_by_id($fileid) {
         global $DB;
 
-        $sql = "SELECT f.*, r.repositoryid, r.reference
+        $sql = "SELECT ".self::instance_sql_fields('f', 'r')."
                   FROM {files} f
              LEFT JOIN {files_reference} r
                        ON f.referencefileid = r.id
@@ -293,7 +293,7 @@ class file_storage {
     public function get_file_by_hash($pathnamehash) {
         global $DB;
 
-        $sql = "SELECT f.*, r.repositoryid, r.reference
+        $sql = "SELECT ".self::instance_sql_fields('f', 'r')."
                   FROM {files} f
              LEFT JOIN {files_reference} r
                        ON f.referencefileid = r.id
@@ -366,16 +366,18 @@ class file_storage {
      * Returns all files belonging to given repository
      *
      * @param int $repositoryid
-     * @param string $sort
+     * @param string $sort A fragment of SQL to use for sorting
      */
     public function get_external_files($repositoryid, $sort = 'sortorder, itemid, filepath, filename') {
         global $DB;
-        $sql = "SELECT f.*, r.repositoryid, r.reference
+        $sql = "SELECT ".self::instance_sql_fields('f', 'r')."
                   FROM {files} f
              LEFT JOIN {files_reference} r
                        ON f.referencefileid = r.id
-                 WHERE r.repositoryid = ?
-              ORDER BY $sort";
+                 WHERE r.repositoryid = ?";
+        if (!empty($sort)) {
+            $sql .= " ORDER BY {$sort}";
+        }
 
         $result = array();
         $filerecords = $DB->get_records_sql($sql, array($repositoryid));
@@ -392,11 +394,11 @@ class file_storage {
      * @param string $component component
      * @param string $filearea file area
      * @param int $itemid item ID or all files if not specified
-     * @param string $sort sort fields
+     * @param string $sort A fragment of SQL to use for sorting
      * @param bool $includedirs whether or not include directories
      * @return array of stored_files indexed by pathanmehash
      */
-    public function get_area_files($contextid, $component, $filearea, $itemid = false, $sort="sortorder, itemid, filepath, filename", $includedirs = true) {
+    public function get_area_files($contextid, $component, $filearea, $itemid = false, $sort = "itemid, filepath, filename", $includedirs = true) {
         global $DB;
 
         $conditions = array('contextid'=>$contextid, 'component'=>$component, 'filearea'=>$filearea);
@@ -407,15 +409,17 @@ class file_storage {
             $itemidsql = '';
         }
 
-        $sql = "SELECT f.*, r.repositoryid, r.reference
+        $sql = "SELECT ".self::instance_sql_fields('f', 'r')."
                   FROM {files} f
              LEFT JOIN {files_reference} r
                        ON f.referencefileid = r.id
                  WHERE f.contextid = :contextid
                        AND f.component = :component
                        AND f.filearea = :filearea
-                       $itemidsql
-              ORDER BY $sort";
+                       $itemidsql";
+        if (!empty($sort)) {
+            $sql .= " ORDER BY {$sort}";
+        }
 
         $result = array();
         $filerecords = $DB->get_records_sql($sql, $conditions);
@@ -439,7 +443,7 @@ class file_storage {
      */
     public function get_area_tree($contextid, $component, $filearea, $itemid) {
         $result = array('dirname'=>'', 'dirfile'=>null, 'subdirs'=>array(), 'files'=>array());
-        $files = $this->get_area_files($contextid, $component, $filearea, $itemid, "sortorder, itemid, filepath, filename", true);
+        $files = $this->get_area_files($contextid, $component, $filearea, $itemid, '', true);
         // first create directory structure
         foreach ($files as $hash=>$dir) {
             if (!$dir->is_directory()) {
@@ -476,7 +480,26 @@ class file_storage {
             $pointer['files'][$file->get_filename()] = $file;
             unset($pointer);
         }
+        $result = $this->sort_area_tree($result);
         return $result;
+    }
+
+    /**
+     * Sorts the result of {@link file_storage::get_area_tree()}.
+     *
+     * @param array $tree Array of results provided by {@link file_storage::get_area_tree()}
+     * @return array of sorted results
+     */
+    protected function sort_area_tree($tree) {
+        foreach ($tree as $key => &$value) {
+            if ($key == 'subdirs') {
+                $value = $this->sort_area_tree($value);
+                collatorlib::ksort($value, collatorlib::SORT_NATURAL);
+            } else if ($key == 'files') {
+                collatorlib::ksort($value, collatorlib::SORT_NATURAL);
+            }
+        }
+        return $tree;
     }
 
     /**
@@ -489,7 +512,7 @@ class file_storage {
      * @param int $filepath directory path
      * @param bool $recursive include all subdirectories
      * @param bool $includedirs include files and directories
-     * @param string $sort sort fields
+     * @param string $sort A fragment of SQL to use for sorting
      * @return array of stored_files indexed by pathanmehash
      */
     public function get_directory_files($contextid, $component, $filearea, $itemid, $filepath, $recursive = false, $includedirs = true, $sort = "filepath, filename") {
@@ -499,12 +522,14 @@ class file_storage {
             return array();
         }
 
+        $orderby = (!empty($sort)) ? " ORDER BY {$sort}" : '';
+
         if ($recursive) {
 
             $dirs = $includedirs ? "" : "AND filename <> '.'";
             $length = textlib::strlen($filepath);
 
-            $sql = "SELECT f.*, r.repositoryid, r.reference
+            $sql = "SELECT ".self::instance_sql_fields('f', 'r')."
                       FROM {files} f
                  LEFT JOIN {files_reference} r
                            ON f.referencefileid = r.id
@@ -512,7 +537,7 @@ class file_storage {
                            AND ".$DB->sql_substr("f.filepath", 1, $length)." = :filepath
                            AND f.id <> :dirid
                            $dirs
-                  ORDER BY $sort";
+                           $orderby";
             $params = array('contextid'=>$contextid, 'component'=>$component, 'filearea'=>$filearea, 'itemid'=>$itemid, 'filepath'=>$filepath, 'dirid'=>$directory->get_id());
 
             $files = array();
@@ -534,7 +559,7 @@ class file_storage {
             $length = textlib::strlen($filepath);
 
             if ($includedirs) {
-                $sql = "SELECT f.*, r.repositoryid, r.reference
+                $sql = "SELECT ".self::instance_sql_fields('f', 'r')."
                           FROM {files} f
                      LEFT JOIN {files_reference} r
                                ON f.referencefileid = r.id
@@ -542,7 +567,7 @@ class file_storage {
                                AND f.itemid = :itemid AND f.filename = '.'
                                AND ".$DB->sql_substr("f.filepath", 1, $length)." = :filepath
                                AND f.id <> :dirid
-                      ORDER BY $sort";
+                               $orderby";
                 $reqlevel = substr_count($filepath, '/') + 1;
                 $filerecords = $DB->get_records_sql($sql, $params);
                 foreach ($filerecords as $filerecord) {
@@ -553,13 +578,13 @@ class file_storage {
                 }
             }
 
-            $sql = "SELECT f.*, r.repositoryid, r.reference
+            $sql = "SELECT ".self::instance_sql_fields('f', 'r')."
                       FROM {files} f
                  LEFT JOIN {files_reference} r
                            ON f.referencefileid = r.id
                      WHERE f.contextid = :contextid AND f.component = :component AND f.filearea = :filearea AND f.itemid = :itemid
                            AND f.filepath = :filepath AND f.filename <> '.'
-                  ORDER BY $sort";
+                           $orderby";
 
             $filerecords = $DB->get_records_sql($sql, $params);
             foreach ($filerecords as $filerecord) {
@@ -772,7 +797,7 @@ class file_storage {
         unset($filerecord['contenthash']);
         unset($filerecord['pathnamehash']);
 
-        $sql = "SELECT f.*, r.repositoryid, r.reference
+        $sql = "SELECT ".self::instance_sql_fields('f', 'r')."
                   FROM {files} f
              LEFT JOIN {files_reference} r
                        ON f.referencefileid = r.id
@@ -853,19 +878,13 @@ class file_storage {
             return $this->get_file_instance($newrecord);
         }
 
+        // note: referencefileid is copied from the original file so that
+        // creating a new file from an existing alias creates new alias implicitly.
+        // here we just check the database consistency.
         if (!empty($newrecord->repositoryid)) {
-            try {
-                $referencerecord = new stdClass;
-                $referencerecord->repositoryid = $newrecord->repositoryid;
-                $referencerecord->reference = $newrecord->reference;
-                $referencerecord->lastsync  = $newrecord->referencelastsync;
-                $referencerecord->lifetime  = $newrecord->referencelifetime;
-                $referencerecord->id = $DB->insert_record('files_reference', $referencerecord);
-            } catch (dml_exception $e) {
-                throw new stored_file_creation_exception($newrecord->contextid, $newrecord->component, $newrecord->filearea, $newrecord->itemid,
-                                                         $newrecord->filepath, $newrecord->filename, $e->debuginfo);
+            if ($newrecord->referencefileid != $this->get_referencefileid($newrecord->repositoryid, $newrecord->reference, MUST_EXIST)) {
+                throw new file_reference_exception($newrecord->repositoryid, $newrecord->reference, $newrecord->referencefileid);
             }
-            $newrecord->referencefileid = $referencerecord->id;
         }
 
         try {
@@ -976,10 +995,6 @@ class file_storage {
             $filerecord->sortorder = 0;
         }
 
-        $filerecord->referencefileid   = !isset($filerecord->referencefileid) ? 0 : $filerecord->referencefileid;
-        $filerecord->referencelastsync = !isset($filerecord->referencelastsync) ? 0 : $filerecord->referencelastsync;
-        $filerecord->referencelifetime = !isset($filerecord->referencelifetime) ? 0 : $filerecord->referencelifetime;
-
         $filerecord->filepath = clean_param($filerecord->filepath, PARAM_PATH);
         if (strpos($filerecord->filepath, '/') !== 0 or strrpos($filerecord->filepath, '/') !== strlen($filerecord->filepath)-1) {
             // path must start and end with '/'
@@ -1028,11 +1043,12 @@ class file_storage {
 
         $newrecord->timecreated  = $filerecord->timecreated;
         $newrecord->timemodified = $filerecord->timemodified;
-        $newrecord->mimetype     = empty($filerecord->mimetype) ? $this->mimetype($pathname) : $filerecord->mimetype;
+        $newrecord->mimetype     = empty($filerecord->mimetype) ? $this->mimetype($pathname, $filerecord->filename) : $filerecord->mimetype;
         $newrecord->userid       = empty($filerecord->userid) ? null : $filerecord->userid;
         $newrecord->source       = empty($filerecord->source) ? null : $filerecord->source;
         $newrecord->author       = empty($filerecord->author) ? null : $filerecord->author;
         $newrecord->license      = empty($filerecord->license) ? null : $filerecord->license;
+        $newrecord->status       = empty($filerecord->status) ? 0 : $filerecord->status;
         $newrecord->sortorder    = $filerecord->sortorder;
 
         list($newrecord->contenthash, $newrecord->filesize, $newfile) = $this->add_file_to_pool($pathname);
@@ -1093,9 +1109,6 @@ class file_storage {
         } else {
             $filerecord->sortorder = 0;
         }
-        $filerecord->referencefileid   = !isset($filerecord->referencefileid) ? 0 : $filerecord->referencefileid;
-        $filerecord->referencelastsync = !isset($filerecord->referencelastsync) ? 0 : $filerecord->referencelastsync;
-        $filerecord->referencelifetime = !isset($filerecord->referencelifetime) ? 0 : $filerecord->referencelifetime;
 
         $filerecord->filepath = clean_param($filerecord->filepath, PARAM_PATH);
         if (strpos($filerecord->filepath, '/') !== 0 or strrpos($filerecord->filepath, '/') !== strlen($filerecord->filepath)-1) {
@@ -1149,12 +1162,13 @@ class file_storage {
         $newrecord->source       = empty($filerecord->source) ? null : $filerecord->source;
         $newrecord->author       = empty($filerecord->author) ? null : $filerecord->author;
         $newrecord->license      = empty($filerecord->license) ? null : $filerecord->license;
+        $newrecord->status       = empty($filerecord->status) ? 0 : $filerecord->status;
         $newrecord->sortorder    = $filerecord->sortorder;
 
         list($newrecord->contenthash, $newrecord->filesize, $newfile) = $this->add_string_to_pool($content);
         $filepathname = $this->path_from_hash($newrecord->contenthash) . '/' . $newrecord->contenthash;
         // get mimetype by magic bytes
-        $newrecord->mimetype = empty($filerecord->mimetype) ? $this->mimetype($filepathname) : $filerecord->mimetype;
+        $newrecord->mimetype = empty($filerecord->mimetype) ? $this->mimetype($filepathname, $filerecord->filename) : $filerecord->mimetype;
 
         $newrecord->pathnamehash = $this->get_pathname_hash($newrecord->contextid, $newrecord->component, $newrecord->filearea, $newrecord->itemid, $newrecord->filepath, $newrecord->filename);
 
@@ -1174,12 +1188,12 @@ class file_storage {
     }
 
     /**
-     * Create a moodle file from file reference information
+     * Create a new alias/shortcut file from file reference information
      *
-     * @param stdClass $filerecord
-     * @param int $repositoryid
-     * @param string $reference
-     * @param array $options options for creating external file
+     * @param stdClass|array $filerecord object or array describing the new file
+     * @param int $repositoryid the id of the repository that provides the original file
+     * @param string $reference the information required by the repository to locate the original file
+     * @param array $options options for creating the new file
      * @return stored_file
      */
     public function create_file_from_reference($filerecord, $repositoryid, $reference, $options = array()) {
@@ -1215,14 +1229,16 @@ class file_storage {
             $filerecord->sortorder = 0;
         }
 
-        $filerecord->referencefileid   = empty($filerecord->referencefileid) ? 0 : $filerecord->referencefileid;
-        $filerecord->referencelastsync = empty($filerecord->referencelastsync) ? 0 : $filerecord->referencelastsync;
-        $filerecord->referencelifetime = empty($filerecord->referencelifetime) ? 0 : $filerecord->referencelifetime;
+        // TODO MDL-33416 [2.4] fields referencelastsync and referencelifetime to be removed from {files} table completely
+        unset($filerecord->referencelastsync);
+        unset($filerecord->referencelifetime);
+
         $filerecord->mimetype          = empty($filerecord->mimetype) ? $this->mimetype($filerecord->filename) : $filerecord->mimetype;
         $filerecord->userid            = empty($filerecord->userid) ? null : $filerecord->userid;
         $filerecord->source            = empty($filerecord->source) ? null : $filerecord->source;
         $filerecord->author            = empty($filerecord->author) ? null : $filerecord->author;
         $filerecord->license           = empty($filerecord->license) ? null : $filerecord->license;
+        $filerecord->status            = empty($filerecord->status) ? 0 : $filerecord->status;
         $filerecord->filepath          = clean_param($filerecord->filepath, PARAM_PATH);
         if (strpos($filerecord->filepath, '/') !== 0 or strrpos($filerecord->filepath, '/') !== strlen($filerecord->filepath)-1) {
             // Path must start and end with '/'.
@@ -1260,30 +1276,42 @@ class file_storage {
             $filerecord->timemodified = $now;
         }
 
-        // Insert file reference record.
+        $transaction = $DB->start_delegated_transaction();
+
         try {
-            $referencerecord = new stdClass;
-            $referencerecord->repositoryid = $repositoryid;
-            $referencerecord->reference = $reference;
-            $referencerecord->lastsync = $filerecord->referencelastsync;
-            $referencerecord->lifetime = $filerecord->referencelifetime;
-            $referencerecord->id = $DB->insert_record('files_reference', $referencerecord);
-        } catch (dml_exception $e) {
-            throw $e;
+            $filerecord->referencefileid = $this->get_or_create_referencefileid($repositoryid, $reference);
+        } catch (Exception $e) {
+            throw new file_reference_exception($repositoryid, $reference, null, null, $e->getMessage());
         }
 
-        $filerecord->referencefileid = $referencerecord->id;
-
-        // External file doesn't have content in moodle.
-        // So we create an empty file for it.
-        list($filerecord->contenthash, $filerecord->filesize, $newfile) = $this->add_string_to_pool(null);
+        if (isset($filerecord->contenthash) && $this->content_exists($filerecord->contenthash)) {
+            // there was specified the contenthash for a file already stored in moodle filepool
+            if (empty($filerecord->filesize)) {
+                $filepathname = $this->path_from_hash($filerecord->contenthash) . '/' . $filerecord->contenthash;
+                $filerecord->filesize = filesize($filepathname);
+            } else {
+                $filerecord->filesize = clean_param($filerecord->filesize, PARAM_INT);
+            }
+        } else {
+            // atempt to get the result of last synchronisation for this reference
+            $lastcontent = $DB->get_record('files', array('referencefileid' => $filerecord->referencefileid),
+                    'id, contenthash, filesize', IGNORE_MULTIPLE);
+            if ($lastcontent) {
+                $filerecord->contenthash = $lastcontent->contenthash;
+                $filerecord->filesize = $lastcontent->filesize;
+            } else {
+                // External file doesn't have content in moodle.
+                // So we create an empty file for it.
+                list($filerecord->contenthash, $filerecord->filesize, $newfile) = $this->add_string_to_pool(null);
+            }
+        }
 
         $filerecord->pathnamehash = $this->get_pathname_hash($filerecord->contextid, $filerecord->component, $filerecord->filearea, $filerecord->itemid, $filerecord->filepath, $filerecord->filename);
 
         try {
             $filerecord->id = $DB->insert_record('files', $filerecord);
         } catch (dml_exception $e) {
-            if ($newfile) {
+            if (!empty($newfile)) {
                 $this->deleted_file_cleanup($filerecord->contenthash);
             }
             throw new stored_file_creation_exception($filerecord->contextid, $filerecord->component, $filerecord->filearea, $filerecord->itemid,
@@ -1292,10 +1320,10 @@ class file_storage {
 
         $this->create_directory($filerecord->contextid, $filerecord->component, $filerecord->filearea, $filerecord->itemid, $filerecord->filepath, $filerecord->userid);
 
-        // Adding repositoryid and reference to file record to create stored_file instance
-        $filerecord->repositoryid = $repositoryid;
-        $filerecord->reference = $reference;
-        return $this->get_file_instance($filerecord);
+        $transaction->allow_commit();
+
+        // this will retrieve all reference information from DB as well
+        return $this->get_file_by_id($filerecord->id);
     }
 
     /**
@@ -1655,64 +1683,121 @@ class file_storage {
      * Unpack reference field
      *
      * @param string $str
+     * @param bool $cleanparams if set to true, array elements will be passed through {@link clean_param()}
+     * @throws file_reference_exception if the $str does not have the expected format
      * @return array
      */
-    public static function unpack_reference($str) {
-        return unserialize(base64_decode($str));
+    public static function unpack_reference($str, $cleanparams = false) {
+        $decoded = base64_decode($str, true);
+        if ($decoded === false) {
+            throw new file_reference_exception(null, $str, null, null, 'Invalid base64 format');
+        }
+        $params = @unserialize($decoded); // hide E_NOTICE
+        if ($params === false) {
+            throw new file_reference_exception(null, $decoded, null, null, 'Not an unserializeable value');
+        }
+        if (is_array($params) && $cleanparams) {
+            $params = array(
+                'component' => is_null($params['component']) ? ''   : clean_param($params['component'], PARAM_COMPONENT),
+                'filearea'  => is_null($params['filearea'])  ? ''   : clean_param($params['filearea'], PARAM_AREA),
+                'itemid'    => is_null($params['itemid'])    ? 0    : clean_param($params['itemid'], PARAM_INT),
+                'filename'  => is_null($params['filename'])  ? null : clean_param($params['filename'], PARAM_FILE),
+                'filepath'  => is_null($params['filepath'])  ? null : clean_param($params['filepath'], PARAM_PATH),
+                'contextid' => is_null($params['contextid']) ? null : clean_param($params['contextid'], PARAM_INT)
+            );
+        }
+        return $params;
     }
 
     /**
-     * Search references by providing reference content
+     * Returns all aliases that refer to some stored_file via the given reference
      *
-     * @param string $str
-     * @return array
+     * All repositories that provide access to a stored_file are expected to use
+     * {@link self::pack_reference()}. This method can't be used if the given reference
+     * does not use this format or if you are looking for references to an external file
+     * (for example it can't be used to search for all aliases that refer to a given
+     * Dropbox or Box.net file).
+     *
+     * Aliases in user draft areas are excluded from the returned list.
+     *
+     * @param string $reference identification of the referenced file
+     * @return array of stored_file indexed by its pathnamehash
      */
-    public function search_references($str) {
+    public function search_references($reference) {
         global $DB;
-        $sql = "SELECT f.*, r.repositoryid, r.reference
-                  FROM {files} f
-             LEFT JOIN {files_reference} r
-                       ON f.referencefileid = r.id
-                 WHERE r.reference = ? AND (f.component <> ? OR f.filearea <> ?)";
 
-        $rs = $DB->get_recordset_sql($sql, array($str, 'user', 'draft'));
+        if (is_null($reference)) {
+            throw new coding_exception('NULL is not a valid reference to an external file');
+        }
+
+        // Give {@link self::unpack_reference()} a chance to throw exception if the
+        // reference is not in a valid format.
+        self::unpack_reference($reference);
+
+        $referencehash = sha1($reference);
+
+        $sql = "SELECT ".self::instance_sql_fields('f', 'r')."
+                  FROM {files} f
+                  JOIN {files_reference} r ON f.referencefileid = r.id
+                  JOIN {repository_instances} ri ON r.repositoryid = ri.id
+                 WHERE r.referencehash = ?
+                       AND (f.component <> ? OR f.filearea <> ?)";
+
+        $rs = $DB->get_recordset_sql($sql, array($referencehash, 'user', 'draft'));
         $files = array();
         foreach ($rs as $filerecord) {
-            $file = $this->get_file_instance($filerecord);
-            if ($file->is_external_file()) {
-                $files[$filerecord->pathnamehash] = $file;
-            }
+            $files[$filerecord->pathnamehash] = $this->get_file_instance($filerecord);
         }
 
         return $files;
     }
 
     /**
-     * Search references count by providing reference content
+     * Returns the number of aliases that refer to some stored_file via the given reference
      *
-     * @param string $str
+     * All repositories that provide access to a stored_file are expected to use
+     * {@link self::pack_reference()}. This method can't be used if the given reference
+     * does not use this format or if you are looking for references to an external file
+     * (for example it can't be used to count aliases that refer to a given Dropbox or
+     * Box.net file).
+     *
+     * Aliases in user draft areas are not counted.
+     *
+     * @param string $reference identification of the referenced file
      * @return int
      */
-    public function search_references_count($str) {
+    public function search_references_count($reference) {
         global $DB;
+
+        if (is_null($reference)) {
+            throw new coding_exception('NULL is not a valid reference to an external file');
+        }
+
+        // Give {@link self::unpack_reference()} a chance to throw exception if the
+        // reference is not in a valid format.
+        self::unpack_reference($reference);
+
+        $referencehash = sha1($reference);
+
         $sql = "SELECT COUNT(f.id)
                   FROM {files} f
-             LEFT JOIN {files_reference} r
-                       ON f.referencefileid = r.id
-                 WHERE r.reference = ? AND (f.component <> ? OR f.filearea <> ?)";
+                  JOIN {files_reference} r ON f.referencefileid = r.id
+                  JOIN {repository_instances} ri ON r.repositoryid = ri.id
+                 WHERE r.referencehash = ?
+                       AND (f.component <> ? OR f.filearea <> ?)";
 
-        $count = $DB->count_records_sql($sql, array($str, 'user', 'draft'));
-        return $count;
+        return (int)$DB->count_records_sql($sql, array($referencehash, 'user', 'draft'));
     }
 
     /**
-     * Return all files referring to provided stored_file instance
-     * This won't work for draft files
+     * Returns all aliases that link to the given stored_file
+     *
+     * Aliases in user draft areas are excluded from the returned list.
      *
      * @param stored_file $storedfile
-     * @return array
+     * @return array of stored_file
      */
-    public function get_references_by_storedfile($storedfile) {
+    public function get_references_by_storedfile(stored_file $storedfile) {
         global $DB;
 
         $params = array();
@@ -1722,36 +1807,19 @@ class file_storage {
         $params['itemid']    = $storedfile->get_itemid();
         $params['filename']  = $storedfile->get_filename();
         $params['filepath']  = $storedfile->get_filepath();
-        $params['userid']    = $storedfile->get_userid();
 
-        $reference = self::pack_reference($params);
-
-        $sql = "SELECT f.*, r.repositoryid, r.reference
-                  FROM {files} f
-             LEFT JOIN {files_reference} r
-                       ON f.referencefileid = r.id
-                 WHERE r.reference = ? AND (f.component <> ? OR f.filearea <> ?)";
-
-        $rs = $DB->get_recordset_sql($sql, array($reference, 'user', 'draft'));
-        $files = array();
-        foreach ($rs as $filerecord) {
-            $file = $this->get_file_instance($filerecord);
-            if ($file->is_external_file()) {
-                $files[$filerecord->pathnamehash] = $file;
-            }
-        }
-
-        return $files;
+        return $this->search_references(self::pack_reference($params));
     }
 
     /**
-     * Return the count files referring to provided stored_file instance
-     * This won't work for draft files
+     * Returns the number of aliases that link to the given stored_file
+     *
+     * Aliases in user draft areas are not counted.
      *
      * @param stored_file $storedfile
      * @return int
      */
-    public function get_references_count_by_storedfile($storedfile) {
+    public function get_references_count_by_storedfile(stored_file $storedfile) {
         global $DB;
 
         $params = array();
@@ -1761,32 +1829,55 @@ class file_storage {
         $params['itemid']    = $storedfile->get_itemid();
         $params['filename']  = $storedfile->get_filename();
         $params['filepath']  = $storedfile->get_filepath();
-        $params['userid']    = $storedfile->get_userid();
 
+        return $this->search_references_count(self::pack_reference($params));
+    }
+
+    /**
+     * Updates all files that are referencing this file with the new contenthash
+     * and filesize
+     *
+     * @param stored_file $storedfile
+     */
+    public function update_references_to_storedfile(stored_file $storedfile) {
+        global $CFG, $DB;
+        $params = array();
+        $params['contextid'] = $storedfile->get_contextid();
+        $params['component'] = $storedfile->get_component();
+        $params['filearea']  = $storedfile->get_filearea();
+        $params['itemid']    = $storedfile->get_itemid();
+        $params['filename']  = $storedfile->get_filename();
+        $params['filepath']  = $storedfile->get_filepath();
         $reference = self::pack_reference($params);
+        $referencehash = sha1($reference);
 
-        $sql = "SELECT COUNT(f.id)
-                  FROM {files} f
-             LEFT JOIN {files_reference} r
-                       ON f.referencefileid = r.id
-                 WHERE r.reference = ? AND (f.component <> ? OR f.filearea <> ?)";
+        $sql = "SELECT repositoryid, id FROM {files_reference}
+                 WHERE referencehash = ? and reference = ?";
+        $rs = $DB->get_recordset_sql($sql, array($referencehash, $reference));
 
-        $count = $DB->count_records_sql($sql, array($reference, 'user', 'draft'));
-        return $count;
+        $now = time();
+        foreach ($rs as $record) {
+            require_once($CFG->dirroot.'/repository/lib.php');
+            $repo = repository::get_instance($record->repositoryid);
+            $lifetime = $repo->get_reference_file_lifetime($reference);
+            $this->update_references($record->id, $now, $lifetime,
+                    $storedfile->get_contenthash(), $storedfile->get_filesize(), 0);
+        }
+        $rs->close();
     }
 
     /**
      * Convert file alias to local file
      *
+     * @throws moodle_exception if file could not be downloaded
+     *
      * @param stored_file $storedfile a stored_file instances
+     * @param int $maxbytes throw an exception if file size is bigger than $maxbytes (0 means no limit)
      * @return stored_file stored_file
      */
-    public function import_external_file($storedfile) {
+    public function import_external_file(stored_file $storedfile, $maxbytes = 0) {
         global $CFG;
-        require_once($CFG->dirroot.'/repository/lib.php');
-        // sync external file
-        repository::sync_external_file($storedfile);
-        // Remove file references
+        $storedfile->import_external_file_contents($maxbytes);
         $storedfile->delete_reference();
         return $storedfile;
     }
@@ -1794,19 +1885,23 @@ class file_storage {
     /**
      * Return mimetype by given file pathname
      *
-     * This method uses fileinfo module to get mimetype using magic bytes if file exists.
-     * If not, it will get mimetype based on filename
+     * If file has a known extension, we return the mimetype based on extension.
+     * Otherwise (when possible) we try to get the mimetype from file contents.
      *
-     * @param string $pathname
+     * @param string $pathname full path to the file
+     * @param string $filename correct file name with extension, if omitted will be taken from $path
      * @return string
      */
-    public static function mimetype($pathname) {
-        if (file_exists($pathname)) {
-            $finfo = new finfo(FILEINFO_MIME_TYPE);
-            return mimeinfo_from_type('type', $finfo->file($pathname));
-        } else {
-            return mimeinfo('type', $pathname);
+    public static function mimetype($pathname, $filename = null) {
+        if (empty($filename)) {
+            $filename = $pathname;
         }
+        $type = mimeinfo('type', $filename);
+        if ($type === 'document/unknown' && class_exists('finfo') && file_exists($pathname)) {
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $type = mimeinfo_from_type('type', $finfo->file($pathname));
+        }
+        return $type;
     }
 
     /**
@@ -1875,5 +1970,130 @@ class file_storage {
             mtrace('done.');
         }
     }
-}
 
+    /**
+     * Get the sql formated fields for a file instance to be created from a
+     * {files} and {files_refernece} join.
+     *
+     * @param string $filesprefix the table prefix for the {files} table
+     * @param string $filesreferenceprefix the table prefix for the {files_reference} table
+     * @return string the sql to go after a SELECT
+     */
+    private static function instance_sql_fields($filesprefix, $filesreferenceprefix) {
+        // Note, these fieldnames MUST NOT overlap between the two tables,
+        // else problems like MDL-33172 occur.
+        $filefields = array('contenthash', 'pathnamehash', 'contextid', 'component', 'filearea',
+            'itemid', 'filepath', 'filename', 'userid', 'filesize', 'mimetype', 'status', 'source',
+            'author', 'license', 'timecreated', 'timemodified', 'sortorder', 'referencefileid');
+
+        $referencefields = array('repositoryid' => 'repositoryid',
+            'reference' => 'reference',
+            'lastsync' => 'referencelastsync',
+            'lifetime' => 'referencelifetime');
+
+        // id is specifically named to prevent overlaping between the two tables.
+        $fields = array();
+        $fields[] = $filesprefix.'.id AS id';
+        foreach ($filefields as $field) {
+            $fields[] = "{$filesprefix}.{$field}";
+        }
+
+        foreach ($referencefields as $field => $alias) {
+            $fields[] = "{$filesreferenceprefix}.{$field} AS {$alias}";
+        }
+
+        return implode(', ', $fields);
+    }
+
+    /**
+     * Returns the id of the record in {files_reference} that matches the passed repositoryid and reference
+     *
+     * If the record already exists, its id is returned. If there is no such record yet,
+     * new one is created (using the lastsync and lifetime provided, too) and its id is returned.
+     *
+     * @param int $repositoryid
+     * @param string $reference
+     * @return int
+     */
+    private function get_or_create_referencefileid($repositoryid, $reference, $lastsync = null, $lifetime = null) {
+        global $DB;
+
+        $id = $this->get_referencefileid($repositoryid, $reference, IGNORE_MISSING);
+
+        if ($id !== false) {
+            // bah, that was easy
+            return $id;
+        }
+
+        // no such record yet, create one
+        try {
+            $id = $DB->insert_record('files_reference', array(
+                'repositoryid'  => $repositoryid,
+                'reference'     => $reference,
+                'referencehash' => sha1($reference),
+                'lastsync'      => $lastsync,
+                'lifetime'      => $lifetime));
+        } catch (dml_exception $e) {
+            // if inserting the new record failed, chances are that the race condition has just
+            // occured and the unique index did not allow to create the second record with the same
+            // repositoryid + reference combo
+            $id = $this->get_referencefileid($repositoryid, $reference, MUST_EXIST);
+        }
+
+        return $id;
+    }
+
+    /**
+     * Returns the id of the record in {files_reference} that matches the passed parameters
+     *
+     * Depending on the required strictness, false can be returned. The behaviour is consistent
+     * with standard DML methods.
+     *
+     * @param int $repositoryid
+     * @param string $reference
+     * @param int $strictness either {@link IGNORE_MISSING}, {@link IGNORE_MULTIPLE} or {@link MUST_EXIST}
+     * @return int|bool
+     */
+    private function get_referencefileid($repositoryid, $reference, $strictness) {
+        global $DB;
+
+        return $DB->get_field('files_reference', 'id',
+            array('repositoryid' => $repositoryid, 'referencehash' => sha1($reference)), $strictness);
+    }
+
+    /**
+     * Updates a reference to the external resource and all files that use it
+     *
+     * This function is called after synchronisation of an external file and updates the
+     * contenthash, filesize and status of all files that reference this external file
+     * as well as time last synchronised and sync lifetime (how long we don't need to call
+     * synchronisation for this reference).
+     *
+     * @param int $referencefileid
+     * @param int $lastsync
+     * @param int $lifetime
+     * @param string $contenthash
+     * @param int $filesize
+     * @param int $status 0 if ok or 666 if source is missing
+     */
+    public function update_references($referencefileid, $lastsync, $lifetime, $contenthash, $filesize, $status) {
+        global $DB;
+        $referencefileid = clean_param($referencefileid, PARAM_INT);
+        $lastsync = clean_param($lastsync, PARAM_INT);
+        $lifetime = clean_param($lifetime, PARAM_INT);
+        validate_param($contenthash, PARAM_TEXT, NULL_NOT_ALLOWED);
+        $filesize = clean_param($filesize, PARAM_INT);
+        $status = clean_param($status, PARAM_INT);
+        $params = array('contenthash' => $contenthash,
+                    'filesize' => $filesize,
+                    'status' => $status,
+                    'referencefileid' => $referencefileid,
+                    'lastsync' => $lastsync,
+                    'lifetime' => $lifetime);
+        $DB->execute('UPDATE {files} SET contenthash = :contenthash, filesize = :filesize,
+            status = :status, referencelastsync = :lastsync, referencelifetime = :lifetime
+            WHERE referencefileid = :referencefileid', $params);
+        $data = array('id' => $referencefileid, 'lastsync' => $lastsync, 'lifetime' => $lifetime);
+        $DB->update_record('files_reference', (object)$data);
+    }
+}

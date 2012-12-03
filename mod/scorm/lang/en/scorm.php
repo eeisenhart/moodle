@@ -47,6 +47,9 @@ $string['asset'] = 'Asset';
 $string['assetlaunched'] = 'Asset - Viewed';
 $string['attempt'] = 'Attempt';
 $string['attempts'] = 'Attempts';
+$string['attemptstatusall'] = 'My home and entry page';
+$string['attemptstatusmy'] = 'My home only';
+$string['attemptstatusentry'] = 'Entry page only';
 $string['attemptsx'] = '{$a} attempts';
 $string['attempt1'] = '1 attempt';
 $string['attr_error'] = 'Bad value for attribute ({$a->attr}) in tag {$a->tag}.';
@@ -85,13 +88,14 @@ $string['directories'] = 'Show the directory links';
 $string['disabled'] = 'Disabled';
 $string['display'] = 'Display package';
 $string['displayattemptstatus'] = 'Display attempt status';
-$string['displayattemptstatus_help'] = 'If enabled, scores and grades for attempts are displayed on the SCORM outline page.';
+$string['displayattemptstatus_help'] = 'This preference allows a summary of the users attempts to show in the course overview block in My home and/or the SCORM entry page.';
 $string['displayattemptstatusdesc'] = 'This preference sets the default value for the display attempt status setting';
 $string['displaycoursestructure'] = 'Display course structure on entry page';
 $string['displaycoursestructure_help'] = 'If enabled, the table of contents is displayed on the SCORM outline page.';
 $string['displaycoursestructuredesc'] = 'This preference sets the default value for the display course structure on entry page setting';
 $string['displaydesc'] = 'This preference sets the default of whether to display the package or not for an activity';
 $string['displaysettings'] = 'Display Settings';
+$string['dnduploadscorm'] = 'Add a SCORM package';
 $string['domxml'] = 'DOMXML external library';
 $string['duedate'] = 'Due date';
 $string['element'] = 'Element';
@@ -180,7 +184,7 @@ $string['invalidhacpsession'] = 'Invalid HACP Session';
 $string['invalidmanifestresource'] = 'WARNING: The following resources were referenced in your manifest but couldn\'t be found:';
 $string['last'] = 'Last accessed on';
 $string['lastaccess'] = 'Last access';
-$string['lastattempt'] = 'Last attempt';
+$string['lastattempt'] = 'Last completed attempt';
 $string['lastattemptlock'] = 'Lock after final attempt';
 $string['lastattemptlock_help'] = 'If enabled, a student is prevented from launching the SCORM player after using up all their allocated attempts.';
 $string['lastattemptlockdesc'] = 'This preference sets the default value for the lock after final attempt setting';
@@ -334,7 +338,8 @@ $string['versionwarning'] = 'The manifest version is older than 1.3, warning at 
 $string['viewallreports'] = 'View reports for {$a} attempts';
 $string['viewalluserreports'] = 'View reports for {$a} users';
 $string['whatgrade'] = 'Attempts grading';
-$string['whatgrade_help'] = 'If multiple attempts are allowed, this setting specifies whether the highest, average (mean), first or last attempt is recorded in the gradebook.
+$string['whatgrade_help'] = 'If multiple attempts are allowed, this setting specifies whether the highest, average (mean), first or last completed attempt is recorded in the gradebook.
+The last completed attempt option does not include attempts with a \'failed\' status.
 
 Handling of Multiple Attempts
 

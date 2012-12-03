@@ -89,6 +89,116 @@ abstract class file_info {
     public abstract function get_children();
 
     /**
+     * Builds SQL sub query (WHERE clause) for selecting files with the specified extensions
+     *
+     * If $extensions == '*' (any file), the result is array('', array())
+     * otherwise the result is something like array('AND filename ...', array(...))
+     *
+     * @param string|array $extensions - either '*' or array of lowercase extensions, i.e. array('.gif','.jpg')
+     * @param string $prefix prefix for DB table files in the query (empty by default)
+     * @return array of two elements: $sql - sql where clause and $params - array of parameters
+     */
+    protected function build_search_files_sql($extensions, $prefix = null) {
+        global $DB;
+        if (strlen($prefix)) {
+            $prefix = $prefix.'.';
+        } else {
+            $prefix = '';
+        }
+        $sql = '';
+        $params = array();
+        if (is_array($extensions) && !in_array('*', $extensions)) {
+            $likes = array();
+            $cnt = 0;
+            foreach ($extensions as $ext) {
+                $cnt++;
+                $likes[] = $DB->sql_like($prefix.'filename', ':filename'.$cnt, false);
+                $params['filename'.$cnt] = '%'.$ext;
+            }
+            $sql .= ' AND (' . join(' OR ', $likes) . ')';
+        }
+        return array($sql, $params);
+     }
+
+    /**
+     * Returns list of children which are either files matching the specified extensions
+     * or folders that contain at least one such file.
+     *
+     * It is recommended to overwrite this function so it uses a proper SQL
+     * query and does not create unnecessary file_info objects (might require a lot of time
+     * and memory usage on big sites).
+     *
+     * @param string|array $extensions, either '*' or array of lowercase extensions, i.e. array('.gif','.jpg')
+     * @return array of file_info instances
+     */
+    public function get_non_empty_children($extensions = '*') {
+        $list = $this->get_children();
+        $nonemptylist = array();
+        foreach ($list as $fileinfo) {
+            if ($fileinfo->is_directory()) {
+                if ($fileinfo->count_non_empty_children($extensions)) {
+                    $nonemptylist[] = $fileinfo;
+                }
+            } else if ($extensions === '*') {
+                $nonemptylist[] = $fileinfo;
+            } else {
+                $filename = $fileinfo->get_visible_name();
+                $extension = textlib::strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+                if (!empty($extension) && in_array('.' . $extension, $extensions)) {
+                    $nonemptylist[] = $fileinfo;
+                }
+            }
+        }
+        return $nonemptylist;
+    }
+
+    /**
+     * Returns the number of children which are either files matching the specified extensions
+     * or folders containing at least one such file.
+     *
+     * We usually don't need the exact number of non empty children if it is >=2 (see param $limit)
+     * This function is used by repository_local to evaluate if the folder is empty. But
+     * it also can be used to check if folder has only one subfolder because in some cases
+     * this subfolder can be skipped.
+     *
+     * It is strongly recommended to overwrite this function so it uses a proper SQL
+     * query and does not create file_info objects (later might require a lot of time
+     * and memory usage on big sites).
+     *
+     * @param string|array $extensions, for example '*' or array('.gif','.jpg')
+     * @param int $limit stop counting after at least $limit non-empty children are found
+     * @return int
+     */
+    public function count_non_empty_children($extensions = '*', $limit = 1) {
+        $list = $this->get_children();
+        $cnt = 0;
+        // first loop through files
+        foreach ($list as $fileinfo) {
+            if (!$fileinfo->is_directory()) {
+                if ($extensions !== '*') {
+                    $filename = $fileinfo->get_visible_name();
+                    $extension = textlib::strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+                    if (empty($extension) || !in_array('.' . $extension, $extensions)) {
+                        continue;
+                    }
+                }
+                if ((++$cnt) >= $limit) {
+                    return $cnt;
+                }
+            }
+        }
+        // now loop through directories
+        foreach ($list as $fileinfo) {
+            if ($fileinfo->is_directory() && $fileinfo->count_non_empty_children($extensions)) {
+                if ((++$cnt) >= $limit) {
+                    return $cnt;
+                }
+            }
+        }
+        return $cnt;
+    }
+
+    /**
      * Returns parent file_info instance
      *
      * @return file_info or null for root
@@ -103,12 +213,12 @@ abstract class file_info {
     public function get_params_rawencoded() {
         $params = $this->get_params();
         $encoded = array();
-        $encoded[] = 'contextid='.$params['contextid'];
-        $encoded[] = 'component='.$params['component'];
-        $encoded[] = 'filearea='.$params['filearea'];
-        $encoded[] = 'itemid='.(is_null($params['itemid']) ? -1 : $params['itemid']);
-        $encoded[] = 'filepath='.(is_null($params['filepath']) ? '' : rawurlencode($params['filepath']));
-        $encoded[] = 'filename='.((is_null($params['filename']) or $params['filename'] === '.') ? '' : rawurlencode($params['filename']));
+        $encoded[] = 'contextid=' . $params['contextid'];
+        $encoded[] = 'component=' . $params['component'];
+        $encoded[] = 'filearea=' . $params['filearea'];
+        $encoded[] = 'itemid=' . (is_null($params['itemid']) ? -1 : $params['itemid']);
+        $encoded[] = 'filepath=' . (is_null($params['filepath']) ? '' : rawurlencode($params['filepath']));
+        $encoded[] = 'filename=' . ((is_null($params['filename']) or $params['filename'] === '.') ? '' : rawurlencode($params['filename']));
 
         return $encoded;
     }
@@ -227,17 +337,31 @@ abstract class file_info {
     }
 
     /**
-     * Returns the localised human-readable name of the file together with
-     * virtual path
+     * Whether or not this is a external resource
      *
+     * @return bool
+     */
+    public function is_external_file() {
+        return false;
+    }
+
+    /**
+     * Returns file status flag.
+     *
+     * @return int 0 means file OK, anything else is a problem and file can not be used
+     */
+    public function get_status() {
+        return 0;
+    }
+
+    /**
+     * Returns the localised human-readable name of the file together with virtual path
+     *
+     * @see file_info_stored::get_readable_fullname()
      * @return string
      */
     public function get_readable_fullname() {
-        $fpath = array();
-        for ($parent = $this; $parent; $parent = $parent->get_parent()) {
-            array_unshift($fpath, $parent->get_visible_name());
-        }
-        return join('/', $fpath);
+        return null;
     }
 
     /**
@@ -303,15 +427,11 @@ abstract class file_info {
     /**
      * Copy content of this file to local storage, overriding current file if needed.
      *
-     * @param int $contextid context ID
-     * @param string $component component
-     * @param string $filearea file area
-     * @param int $itemid item ID
-     * @param string $filepath file path
-     * @param string $filename file name
-     * @return boolean success
+     * @param array|stdClass $filerecord contains contextid, component, filearea,
+     *    itemid, filepath, filename and optionally other attributes of the new file
+     * @return bool success
      */
-    public function copy_to_storage($contextid, $component, $filearea, $itemid, $filepath, $filename) {
+    public function copy_to_storage($filerecord) {
         return false;
     }
 

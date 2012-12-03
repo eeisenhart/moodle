@@ -80,6 +80,7 @@ $string['data:comment'] = 'Write comments';
 $string['data:exportallentries'] = 'Export all database entries';
 $string['data:exportentry'] = 'Export a database entry';
 $string['data:exportownentry'] = 'Export own database entry';
+$string['data:exportuserinfo'] = 'Export user information';
 $string['data:managecomments'] = 'Manage comments';
 $string['data:manageentries'] = 'Manage entries';
 $string['data:managetemplates'] = 'Manage templates';
@@ -177,6 +178,9 @@ $string['chooseorupload'] = 'Choose file';
 $string['expired'] = 'Sorry, this activity closed on {$a} and is no longer available';
 $string['importentries'] = 'Import entries';
 $string['importsuccess'] = 'The preset has been successfully applied.';
+$string['includeapproval'] = 'Include approval status';
+$string['includetime'] = 'Include time added/modified';
+$string['includeuserdetails'] = 'Include user details';
 $string['insufficiententries'] = 'more entries needed to view this database';
 $string['intro'] = 'Introduction';
 $string['invalidaccess'] = 'This page was not accessed correctly';
@@ -208,18 +212,18 @@ $string['menuchoose'] = 'Choose...';
 $string['missingdata'] = 'Data id or object must be provided to field class';
 $string['missingfield'] = 'Programmer error: You must specify field and/or data when defining field class.';
 $string['modulename'] = 'Database';
-$string['modulename_help'] = 'The database activity module enables participants to create, maintain and search a collection of entries (i.e. records).  The structure of the entries is defined by the teacher as a number of fields. Field types include checkbox, radio buttons, dropdown menu, text area, URL, picture and uploaded file.
+$string['modulename_help'] = 'The database activity module enables participants to create, maintain and search a collection of entries (i.e. records).  The structure of the entries is defined by the teacher as a number of fields. Field types include checkbox, radio buttons, dropdown menu, text area, URL, picture and uploaded file.
 
 The visual layout of information when listing, viewing or editing database entries may be controlled by database templates. Database activities may be shared between courses as presets and a teacher may also import and export database entries.
 
-If the database auto-linking filter is enabled, any entries in a database will be automatically linked to where the words or phrases appear within the course.
+If the database auto-linking filter is enabled, any entries in a database will be automatically linked where the words or phrases appear within the course.
 
-A teacher can allow comments on entries. Entries can also be rated by teachers or students (peer evaluation). Ratings are aggregated to form a final grade which is recorded in the gradebook.
+A teacher can allow comments on entries. Entries can also be rated by teachers or students (peer evaluation). Ratings can be aggregated to form a final grade which is recorded in the gradebook.
 
 Database activities have many uses, such as
 
-* A collaborative collection of web links/books/journal references
-* For displaying student-created photos/posters/websites/poems for peer comment and review';
+* A collaborative collection of web links, books, book reviews, journal references etc
+* For displaying student-created photos, posters, websites or poems for peer comment and review';
 $string['modulename_link'] = 'mod/data/view';
 $string['modulenameplural'] = 'Databases';
 $string['more'] = 'More';
@@ -338,6 +342,7 @@ $string['uploadrecords_help'] = 'Entries may be uploaded via text file. The form
 The field enclosure is a character that surrounds each field in each record. It can normally be left unset.';
 $string['uploadrecords_link'] = 'mod/data/import';
 $string['url'] = 'Url';
+$string['usedate'] = 'Include in search.';
 $string['usestandard'] = 'Use a preset';
 $string['usestandard_help'] = 'To use a preset available to the whole site, select it from the list. (If you have added a preset to the list using the save as preset feature then you have the option of deleting it.)';
 $string['viewfromdate'] = 'Read only from';
