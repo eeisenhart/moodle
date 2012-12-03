@@ -763,14 +763,9 @@ function process_membership_tag($tagcontents){
                             }
                         }
                         // Add the user-to-group association if it doesn't already exist
-<<<<<<< HEAD
-                        if ($member->groupid) {
-                            groups_add_member($member->groupid, $memberstoreobj->userid);
-=======
                         if($member->groupid) {
                             groups_add_member($member->groupid, $memberstoreobj->userid,
                                     'enrol_imsenterprise', $einstance->id);
->>>>>>> 03953061caf31059622849a260b6ced26ac8aaa8
                         }
                     } // End of group-enrolment (from member.role.extension.cohort tag)
 
