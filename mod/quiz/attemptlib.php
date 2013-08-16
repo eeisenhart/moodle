@@ -1192,7 +1192,7 @@ class quiz_attempt {
      */
     public function render_question_at_step($slot, $seq, $reviewing, $thispageurl = '') {
         return $this->quba->render_question_at_step($slot, $seq,
-                $this->get_display_options($reviewing),
+                $this->get_display_options_with_edit_link($reviewing, $slot, $thispageurl),
                 $this->get_question_number($slot));
     }
 
@@ -1330,15 +1330,26 @@ class quiz_attempt {
     /**
      * Process all the actions that were submitted as part of the current request.
      *
-     * @param int $timestamp the timestamp that should be stored as the modifed
-     * time in the database for these actions. If null, will use the current time.
+     * @param int  $timestamp  the timestamp that should be stored as the modifed
+     *                         time in the database for these actions. If null, will use the current time.
+     * @param bool $becomingoverdue
+     * @param array|null $simulatedresponses If not null, then we are testing, and this is an array of simulated data, keys are slot
+     *                                          nos and values are arrays representing student responses which will be passed to
+     *                                          question_definition::prepare_simulated_post_data method and then have the
+     *                                          appropriate prefix added.
      */
-    public function process_submitted_actions($timestamp, $becomingoverdue = false) {
+    public function process_submitted_actions($timestamp, $becomingoverdue = false, $simulatedresponses = null) {
         global $DB;
 
         $transaction = $DB->start_delegated_transaction();
 
-        $this->quba->process_all_actions($timestamp);
+        if ($simulatedresponses !== null) {
+            $simulatedpostdata = $this->quba->prepare_simulated_post_data($simulatedresponses);
+        } else {
+            $simulatedpostdata = null;
+        }
+
+        $this->quba->process_all_actions($timestamp, $simulatedpostdata);
         question_engine::save_questions_usage_by_activity($this->quba);
 
         $this->attempt->timemodified = $timestamp;
@@ -1354,6 +1365,23 @@ class quiz_attempt {
         if (!$this->is_preview() && $this->attempt->state == self::FINISHED) {
             quiz_save_best_grade($this->get_quiz(), $this->get_userid());
         }
+
+        $transaction->allow_commit();
+    }
+
+    /**
+     * Process all the autosaved data that was part of the current request.
+     *
+     * @param int $timestamp the timestamp that should be stored as the modifed
+     * time in the database for these actions. If null, will use the current time.
+     */
+    public function process_auto_save($timestamp) {
+        global $DB;
+
+        $transaction = $DB->start_delegated_transaction();
+
+        $this->quba->process_all_autosaves($timestamp);
+        question_engine::save_questions_usage_by_activity($this->quba);
 
         $transaction->allow_commit();
     }
@@ -1666,14 +1694,15 @@ abstract class quiz_nav_panel_base {
 
     public function user_picture() {
         global $DB;
-
-        if (!$this->attemptobj->get_quiz()->showuserpicture) {
+        if ($this->attemptobj->get_quiz()->showuserpicture == QUIZ_SHOWIMAGE_NONE) {
             return null;
         }
-
         $user = $DB->get_record('user', array('id' => $this->attemptobj->get_userid()));
         $userpicture = new user_picture($user);
         $userpicture->courseid = $this->attemptobj->get_courseid();
+        if ($this->attemptobj->get_quiz()->showuserpicture == QUIZ_SHOWIMAGE_LARGE) {
+            $userpicture->size = true;
+        }
         return $userpicture;
     }
 }

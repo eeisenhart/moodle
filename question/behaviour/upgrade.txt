@@ -1,5 +1,15 @@
 This files describes API changes for question behaviour plugins.
 
+=== 2.6 ===
+
+1) Legacy required_question_definition_type no longer supported. (See 2.2 point 2) below.)
+
+=== 2.3 ===
+
+1) This plugin type now supports cron in the standard way. If required, Create a
+   lib.php file containing
+function qbehaviour_mypluginname_cron() {};
+
 === 2.2 ===
 
 1) The old
@@ -14,10 +24,3 @@ $plugin->dependencies = array(
 is_compatible_question method. You should change your behaviour to override the
 new method, not the old one. This change has been implemented in a
 backwards-compatible way, so behaviours will not break.
-
-
-=== 2.3 ===
-
-* This plugin type now supports cron in the standard way. If required, Create a
-  lib.php file containing
-function qbehaviour_mypluginname_cron() {};

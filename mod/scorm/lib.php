@@ -26,8 +26,6 @@ define('SCORM_TYPE_LOCAL', 'local');
 define('SCORM_TYPE_LOCALSYNC', 'localsync');
 /** SCORM_TYPE_EXTERNAL = external */
 define('SCORM_TYPE_EXTERNAL', 'external');
-/** SCORM_TYPE_IMSREPOSITORY = imsrepository */
-define('SCORM_TYPE_IMSREPOSITORY', 'imsrepository');
 /** SCORM_TYPE_AICCURL = external AICC url */
 define('SCORM_TYPE_AICCURL', 'aiccurl');
 
@@ -84,7 +82,6 @@ function scorm_status_options($with_strings = false) {
  * @uses SCORM_TYPE_LOCAL
  * @uses SCORM_TYPE_LOCALSYNC
  * @uses SCORM_TYPE_EXTERNAL
- * @uses SCORM_TYPE_IMSREPOSITORY
  * @param object $scorm Form data
  * @param object $mform
  * @return int new instance id
@@ -138,10 +135,9 @@ function scorm_add_instance($scorm, $mform=null) {
         $record->reference = $scorm->packageurl;
     } else if ($record->scormtype === SCORM_TYPE_EXTERNAL) {
         $record->reference = $scorm->packageurl;
-    } else if ($record->scormtype === SCORM_TYPE_IMSREPOSITORY) {
-        $record->reference = $scorm->packageurl;
     } else if ($record->scormtype === SCORM_TYPE_AICCURL) {
         $record->reference = $scorm->packageurl;
+        $record->hidetoc = SCORM_TOC_DISABLED; // TOC is useless for direct AICCURL so disable it.
     } else {
         return false;
     }
@@ -172,7 +168,6 @@ function scorm_add_instance($scorm, $mform=null) {
  * @uses SCORM_TYPE_LOCAL
  * @uses SCORM_TYPE_LOCALSYNC
  * @uses SCORM_TYPE_EXTERNAL
- * @uses SCORM_TYPE_IMSREPOSITORY
  * @param object $scorm Form data
  * @param object $mform
  * @return bool
@@ -210,14 +205,11 @@ function scorm_update_instance($scorm, $mform=null) {
 
     } else if ($scorm->scormtype === SCORM_TYPE_LOCALSYNC) {
         $scorm->reference = $scorm->packageurl;
-
     } else if ($scorm->scormtype === SCORM_TYPE_EXTERNAL) {
-        $scorm->reference = $scorm->packageurl;
-
-    } else if ($scorm->scormtype === SCORM_TYPE_IMSREPOSITORY) {
         $scorm->reference = $scorm->packageurl;
     } else if ($scorm->scormtype === SCORM_TYPE_AICCURL) {
         $scorm->reference = $scorm->packageurl;
+        $scorm->hidetoc = SCORM_TOC_DISABLED; // TOC is useless for direct AICCURL so disable it.
     } else {
         return false;
     }
@@ -278,8 +270,6 @@ function scorm_delete_instance($id) {
             }
         }
         $DB->delete_records('scorm_scoes', array('scorm'=>$scorm->id));
-    } else {
-        $result = false;
     }
     if (! $DB->delete_records('scorm', array('id'=>$scorm->id))) {
         $result = false;
@@ -393,7 +383,10 @@ function scorm_user_complete($course, $user, $mod, $scorm) {
                                          array($scorm->id), 'id', 'id,identifier,title')) {
         if (count($orgs) <= 1) {
             unset($orgs);
-            $orgs[]->identifier = '';
+            $orgs = array();
+            $org = new stdClass();
+            $org->identifier = '';
+            $orgs[] = $org;
         }
         $report .= '<div class="mod-scorm">'."\n";
         foreach ($orgs as $org) {
@@ -1021,6 +1014,7 @@ function scorm_debug_log_filename($type, $scoid) {
  * @param integer $scoid - scoid of object this log entry is for.
  */
 function scorm_debug_log_write($type, $text, $scoid) {
+    global $CFG;
 
     $debugenablelog = get_config('scorm', 'allowapidebug');
     if (!$debugenablelog || empty($text)) {
@@ -1029,6 +1023,7 @@ function scorm_debug_log_write($type, $text, $scoid) {
     if (make_temp_directory('scormlogs/')) {
         $logfile = scorm_debug_log_filename($type, $scoid);
         @file_put_contents($logfile, date('Y/m/d H:i:s O')." DEBUG $text\r\n", FILE_APPEND);
+        @chmod($logfile, $CFG->filepermissions);
     }
 }
 

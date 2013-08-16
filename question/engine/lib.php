@@ -71,10 +71,11 @@ abstract class question_engine {
     /**
      * Load a {@link question_usage_by_activity} from the database, based on its id.
      * @param int $qubaid the id of the usage to load.
+     * @param moodle_database $db a database connectoin. Defaults to global $DB.
      * @return question_usage_by_activity loaded from the database.
      */
-    public static function load_questions_usage_by_activity($qubaid) {
-        $dm = new question_engine_data_mapper();
+    public static function load_questions_usage_by_activity($qubaid, moodle_database $db = null) {
+        $dm = new question_engine_data_mapper($db);
         return $dm->load_questions_usage_by_activity($qubaid);
     }
 
@@ -83,9 +84,10 @@ abstract class question_engine {
      * if the usage was newly created by {@link make_questions_usage_by_activity()}
      * or loaded from the database using {@link load_questions_usage_by_activity()}
      * @param question_usage_by_activity the usage to save.
+     * @param moodle_database $db a database connectoin. Defaults to global $DB.
      */
-    public static function save_questions_usage_by_activity(question_usage_by_activity $quba) {
-        $dm = new question_engine_data_mapper();
+    public static function save_questions_usage_by_activity(question_usage_by_activity $quba, moodle_database $db = null) {
+        $dm = new question_engine_data_mapper($db);
         $observer = $quba->get_observer();
         if ($observer instanceof question_engine_unit_of_work) {
             $observer->save($dm);
@@ -223,7 +225,7 @@ abstract class question_engine {
      */
     public static function get_archetypal_behaviours() {
         $archetypes = array();
-        $behaviours = get_plugin_list('qbehaviour');
+        $behaviours = core_component::get_plugin_list('qbehaviour');
         foreach ($behaviours as $behaviour => $notused) {
             if (self::is_behaviour_archetypal($behaviour)) {
                 $archetypes[$behaviour] = self::get_behaviour_name($behaviour);
@@ -757,16 +759,16 @@ abstract class question_utils {
     public static function arrays_same_at_key_integer(
             array $array1, array $array2, $key) {
         if (array_key_exists($key, $array1)) {
-            $value1 = $array1[$key];
+            $value1 = (int) $array1[$key];
         } else {
             $value1 = 0;
         }
         if (array_key_exists($key, $array2)) {
-            $value2 = $array2[$key];
+            $value2 = (int) $array2[$key];
         } else {
             $value2 = 0;
         }
-        return ((integer) $value1) === ((integer) $value2);
+        return $value1 === $value2;
     }
 
     private static $units     = array('', 'i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix');
@@ -815,6 +817,22 @@ abstract class question_utils {
     public static function optional_param_mark($parname) {
         return self::clean_param_mark(
                 optional_param($parname, null, PARAM_RAW_TRIMMED));
+    }
+
+    /**
+     * Convert part of some question content to plain text.
+     * @param string $text the text.
+     * @param int $format the text format.
+     * @param array $options formatting options. Passed to {@link format_text}.
+     * @return float|string|null cleaned mark as a float if possible. Otherwise '' or null.
+     */
+    public static function to_plain_text($text, $format, $options = array('noclean' => 'true')) {
+        // The following call to html_to_text uses the option that strips out
+        // all URLs, but format_text complains if it finds @@PLUGINFILE@@ tokens.
+        // So, we need to replace @@PLUGINFILE@@ with a real URL, but it doesn't
+        // matter what. We use http://example.com/.
+        $text = str_replace('@@PLUGINFILE@@/', 'http://example.com/', $text);
+        return html_to_text(format_text($text, $format, $options), 0, false);
     }
 }
 

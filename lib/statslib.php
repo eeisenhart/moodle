@@ -180,6 +180,7 @@ function stats_cron_daily($maxdays=1) {
     $defaultfproleid = (int)$CFG->defaultfrontpageroleid;
 
     mtrace("Running daily statistics gathering, starting at $timestart:");
+    cron_trace_time_and_memory();
 
     $days  = 0;
     $total = 0;
@@ -406,7 +407,7 @@ function stats_cron_daily($maxdays=1) {
 
                     SELECT 'enrolments', $nextmidnight, ".SITEID.", $defaultfproleid,
                            $totalactiveusers AS stat1, $dailyactiveusers AS stat2" .
-                    $DB->sql_null_from_clause();;
+                    $DB->sql_null_from_clause();
 
             if ($logspresent && !stats_run_query($sql)) {
                 $failed = true;
@@ -672,6 +673,7 @@ function stats_cron_weekly() {
     $DB->delete_records_select('stats_user_weekly', "timeend > $timestart");
 
     mtrace("Running weekly statistics gathering, starting at $timestart:");
+    cron_trace_time_and_memory();
 
     $weeks = 0;
     while ($now > $nextstartweek) {
@@ -814,6 +816,7 @@ function stats_cron_monthly() {
 
 
     mtrace("Running monthly statistics gathering, starting at $timestart:");
+    cron_trace_time_and_memory();
 
     $months = 0;
     while ($now > $nextstartmonth) {
@@ -1074,6 +1077,7 @@ function stats_get_next_month_start($time) {
 function stats_clean_old() {
     global $DB;
     mtrace("Running stats cleanup tasks...");
+    cron_trace_time_and_memory();
     $deletebefore =  stats_get_base_monthly();
 
     // delete dailies older than 3 months (to be safe)
@@ -1442,6 +1446,18 @@ function stats_get_report_options($courseid,$mode) {
     return $reportoptions;
 }
 
+/**
+ * Fix missing entries in the statistics.
+ *
+ * This creates a dummy stat when nothing happened during a day/week/month.
+ *
+ * @param array $stats array of statistics.
+ * @param int $timeafter unused.
+ * @param string $timestr type of statistics to generate (dayly, weekly, monthly).
+ * @param boolean $line2
+ * @param boolean $line3
+ * @return array of fixed statistics.
+ */
 function stats_fix_zeros($stats,$timeafter,$timestr,$line2=true,$line3=false) {
 
     if (empty($stats)) {
@@ -1449,23 +1465,37 @@ function stats_fix_zeros($stats,$timeafter,$timestr,$line2=true,$line3=false) {
     }
 
     $timestr = str_replace('user_','',$timestr); // just in case.
-    $fun = 'stats_get_base_'.$timestr;
 
+    // Gets the current user base time.
+    $fun = 'stats_get_base_'.$timestr;
     $now = $fun();
 
-    $times = array();
-    // add something to timeafter since it is our absolute base
+    // Extract the ending time of the statistics.
     $actualtimes = array();
-    foreach ($stats as $statid=>$s) {
-        //normalize the times in stats - those might have been created in different timezone, DST etc.
-        $s->timeend = $fun($s->timeend + 60*60*5);
+    $actualtimeshour = null;
+    foreach ($stats as $statid => $s) {
+        // Normalise the month date to the 1st if for any reason it's set to later. But we ignore
+        // anything above or equal to 29 because sometimes we get the end of the month. Also, we will
+        // set the hours of the result to all of them, that way we prevent DST differences.
+        if ($timestr == 'monthly') {
+            $day = date('d', $s->timeend);
+            if (date('d', $s->timeend) > 1 && date('d', $s->timeend) < 29) {
+                $day = 1;
+            }
+            if (is_null($actualtimeshour)) {
+                $actualtimeshour = date('H', $s->timeend);
+            }
+            $s->timeend = mktime($actualtimeshour, 0, 0, date('m', $s->timeend), $day, date('Y', $s->timeend));
+        }
         $stats[$statid] = $s;
-
         $actualtimes[] = $s->timeend;
     }
 
-    $timeafter = array_pop(array_values($actualtimes));
+    $actualtimesvalues = array_values($actualtimes);
+    $timeafter = array_pop($actualtimesvalues);
 
+    // Generate a base timestamp for each possible month/week/day.
+    $times = array();
     while ($timeafter < $now) {
         $times[] = $timeafter;
         if ($timestr == 'daily') {
@@ -1473,12 +1503,25 @@ function stats_fix_zeros($stats,$timeafter,$timestr,$line2=true,$line3=false) {
         } else if ($timestr == 'weekly') {
             $timeafter = stats_get_next_week_start($timeafter);
         } else if ($timestr == 'monthly') {
-            $timeafter = stats_get_next_month_start($timeafter);
+            // We can't just simply +1 month because the 31st Jan + 1 month = 2nd of March.
+            $year = date('Y', $timeafter);
+            $month = date('m', $timeafter);
+            $day = date('d', $timeafter);
+            $dayofnextmonth = $day;
+            if ($day >= 29) {
+                $daysinmonth = date('n', mktime(0, 0, 0, $month+1, 1, $year));
+                if ($day > $daysinmonth) {
+                    $dayofnextmonth = $daysinmonth;
+                }
+            }
+            $timeafter = mktime($actualtimeshour, 0, 0, $month+1, $dayofnextmonth, $year);
         } else {
-            return $stats; // this will put us in a never ending loop.
+            // This will put us in a never ending loop.
+            return $stats;
         }
     }
 
+    // Add the base timestamp to the statistics if not present.
     foreach ($times as $count => $time) {
         if (!in_array($time,$actualtimes) && $count != count($times) -1) {
             $newobj = new StdClass;
@@ -1499,7 +1542,6 @@ function stats_fix_zeros($stats,$timeafter,$timestr,$line2=true,$line3=false) {
 
     usort($stats,"stats_compare_times");
     return $stats;
-
 }
 
 // helper function to sort arrays by $obj->timeend
@@ -1547,47 +1589,66 @@ function stats_temp_table_create() {
 
     stats_temp_table_drop();
 
-    $xmlfile  = $CFG->dirroot . '/lib/db/install.xml';
-    $tables   = array();
+    $tables = array();
 
-    // Allows for the additional xml files to be used (if necessary)
-    $files    = array(
-        $xmlfile  => array(
-            'stats_daily'           => array('temp_stats_daily'),
-            'stats_user_daily'      => array('temp_stats_user_daily'),
-            'temp_enroled_template' => array('temp_enroled'),
-            'temp_log_template'     => array('temp_log1', 'temp_log2'),
-        ),
-    );
+    /// Define tables user to be created
+    $table = new xmldb_table('temp_stats_daily');
+    $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+    $table->add_field('courseid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('timeend', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('roleid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('stattype', XMLDB_TYPE_CHAR, 20, null, XMLDB_NOTNULL, null, 'activity');
+    $table->add_field('stat1', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('stat2', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+    $table->add_index('courseid', XMLDB_INDEX_NOTUNIQUE, array('courseid'));
+    $table->add_index('timeend', XMLDB_INDEX_NOTUNIQUE, array('timeend'));
+    $table->add_index('roleid', XMLDB_INDEX_NOTUNIQUE, array('roleid'));
+    $tables['temp_stats_daily'] = $table;
 
-    foreach ($files as $file => $contents) {
+    $table = new xmldb_table('temp_stats_user_daily');
+    $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+    $table->add_field('courseid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('userid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('roleid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('timeend', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('statsreads', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('statswrites', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('stattype', XMLDB_TYPE_CHAR, 30, null, XMLDB_NOTNULL, null, null);
+    $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+    $table->add_index('courseid', XMLDB_INDEX_NOTUNIQUE, array('courseid'));
+    $table->add_index('userid', XMLDB_INDEX_NOTUNIQUE, array('userid'));
+    $table->add_index('timeend', XMLDB_INDEX_NOTUNIQUE, array('timeend'));
+    $table->add_index('roleid', XMLDB_INDEX_NOTUNIQUE, array('roleid'));
+    $tables['temp_stats_user_daily'] = $table;
 
-        $xmldb_file = new xmldb_file($file);
-        if (!$xmldb_file->fileExists()) {
-            throw new ddl_exception('ddlxmlfileerror', null, 'File does not exist');
-        }
-        $loaded = $xmldb_file->loadXMLStructure();
-        if (!$loaded || !$xmldb_file->isLoaded()) {
-            throw new ddl_exception('ddlxmlfileerror', null, 'not loaded??');
-        }
-        $xmldb_structure = $xmldb_file->getStructure();
+    $table = new xmldb_table('temp_enroled');
+    $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+    $table->add_field('userid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('courseid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('roleid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, null);
+    $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+    $table->add_index('userid', XMLDB_INDEX_NOTUNIQUE, array('userid'));
+    $table->add_index('courseid', XMLDB_INDEX_NOTUNIQUE, array('courseid'));
+    $table->add_index('roleid', XMLDB_INDEX_NOTUNIQUE, array('roleid'));
+    $tables['temp_enroled'] = $table;
 
-        foreach ($contents as $template => $names) {
-            $table = $xmldb_structure->getTable($template);
 
-            if (is_null($table)) {
-                throw new ddl_exception('ddlunknowntable', null, 'The table '. $name .' is not defined in the file '. $xmlfile);
-            }
-            $table->setNext(null);
-            $table->setPrevious(null);
+    $table = new xmldb_table('temp_log1');
+    $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+    $table->add_field('userid', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('course', XMLDB_TYPE_INTEGER, 10, null, XMLDB_NOTNULL, null, '0');
+    $table->add_field('action', XMLDB_TYPE_CHAR, 40, null, XMLDB_NOTNULL, null, null);
+    $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
+    $table->add_index('action', XMLDB_INDEX_NOTUNIQUE, array('action'));
+    $table->add_index('course', XMLDB_INDEX_NOTUNIQUE, array('course'));
+    $table->add_index('user', XMLDB_INDEX_NOTUNIQUE, array('userid'));
+    $table->add_index('usercourseaction', XMLDB_INDEX_NOTUNIQUE, array('userid','course','action'));
+    $tables['temp_log1'] = $table;
 
-            foreach ($names as $name) {
-                $named = clone $table;
-                $named->setName($name);
-                $tables[$name] = $named;
-            }
-        }
-    }
+    /// temp_log2 is exactly the same as temp_log1.
+    $tables['temp_log2'] = clone $tables['temp_log1'];
+    $tables['temp_log2']->setName('temp_log2');
 
     try {
 

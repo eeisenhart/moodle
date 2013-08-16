@@ -198,11 +198,6 @@ function SCORMapi1_2() {
         return "false";
     }
 
-<?php
-    // pull in the TOC callback
-    require_once($CFG->dirroot.'/mod/scorm/datamodels/callback.js.php');
-?>
-
     function LMSFinish (param) {
         errorCode = "0";
         if (param == "") {
@@ -235,9 +230,10 @@ function SCORMapi1_2() {
                 ?>
                 // trigger TOC update
                 var sURL = "<?php echo $CFG->wwwroot; ?>" + "/mod/scorm/prereqs.php?a=<?php echo $scorm->id ?>&scoid=<?php echo $scoid ?>&attempt=<?php echo $attempt ?>&mode=<?php echo $mode ?>&currentorg=<?php echo $currentorg ?>&sesskey=<?php echo sesskey(); ?>";
-                var callback = this.connectPrereqCallback;
-                YUI.use('yui2-connection', function(Y) {
-                    Y.YUI2.util.Connect.asyncRequest('GET', sURL, callback, null);
+                var callback = M.mod_scorm.connectPrereqCallback;
+                YUI().use('io-base', function(Y) {
+                    Y.on('io:complete', callback.success, Y);
+                    Y.io(sURL);
                 });
                 return result;
             } else {
@@ -432,6 +428,13 @@ function SCORMapi1_2() {
         if (param == "") {
             if (Initialized) {
                 result = StoreData(cmi,false);
+                // trigger TOC update
+                var sURL = "<?php echo $CFG->wwwroot; ?>" + "/mod/scorm/prereqs.php?a=<?php echo $scorm->id ?>&scoid=<?php echo $scoid ?>&attempt=<?php echo $attempt ?>&mode=<?php echo $mode ?>&currentorg=<?php echo $currentorg ?>&sesskey=<?php echo sesskey(); ?>";
+                var callback = M.mod_scorm.connectPrereqCallback;
+                YUI().use('io-base', function(Y) {
+                    Y.on('io:complete', callback.success, Y);
+                    Y.io(sURL);
+                });
                 <?php
                     if (scorm_debugging($scorm)) {
                         echo 'LogAPICall("Commit", param, "", 0);';
@@ -444,7 +447,7 @@ function SCORMapi1_2() {
                 ?>
                 result = ('true' == result) ? 'true' : 'false';
                 errorCode = (result =='true')? '0' : '101';
-                <?php 
+                <?php
                     if (scorm_debugging($scorm)) {
                         echo 'LogAPICall("LMSCommit", "result", result, 0);';
                         echo 'LogAPICall("LMSCommit", "errorCode", errorCode, 0);';
@@ -649,7 +652,7 @@ function SCORMapi1_2() {
             }
             if (cmi.core.lesson_mode == 'normal') {
                 if (cmi.core.credit == 'credit') {
-                    if (cmi.student_data.mastery_score != '' && cmi.core.score.raw != '') {
+                    if (cmi.student_data.mastery_score !== '' && cmi.core.score.raw !== '') {
                         if (parseFloat(cmi.core.score.raw) >= parseFloat(cmi.student_data.mastery_score)) {
                             cmi.core.lesson_status = 'passed';
                         } else {

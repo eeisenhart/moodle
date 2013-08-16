@@ -1397,6 +1397,7 @@ class assignment_base {
 
         $table->no_sorting('finalgrade');
         $table->no_sorting('outcome');
+        $table->text_sorting('submissioncomment');
 
         // Start working -- this is necessary as soon as the niceties are over
         $table->setup();
@@ -1520,7 +1521,7 @@ class assignment_base {
                             } else if ($quickgrade) {
                                 $comment = '<div id="com'.$auser->id.'">'
                                          . '<textarea tabindex="'.$tabindex++.'" name="submissioncomment['.$auser->id.']" id="submissioncomment'
-                                         . $auser->id.'" rows="2" cols="20">'.($auser->submissioncomment).'</textarea></div>';
+                                         . $auser->id.'" rows="2" cols="20" spellcheck="true">'.($auser->submissioncomment).'</textarea></div>';
                             } else {
                                 $comment = '<div id="com'.$auser->id.'">'.shorten_text(strip_tags($auser->submissioncomment),15).'</div>';
                             }
@@ -1548,7 +1549,7 @@ class assignment_base {
                             } else if ($quickgrade) {
                                 $comment = '<div id="com'.$auser->id.'">'
                                          . '<textarea tabindex="'.$tabindex++.'" name="submissioncomment['.$auser->id.']" id="submissioncomment'
-                                         . $auser->id.'" rows="2" cols="20">'.($auser->submissioncomment).'</textarea></div>';
+                                         . $auser->id.'" rows="2" cols="20" spellcheck="true">'.($auser->submissioncomment).'</textarea></div>';
                             } else {
                                 $comment = '<div id="com'.$auser->id.'">&nbsp;</div>';
                             }
@@ -2824,7 +2825,7 @@ function assignment_cron () {
     global $CFG, $USER, $DB;
 
     /// first execute all crons in plugins
-    if ($plugins = get_plugin_list('assignment')) {
+    if ($plugins = core_component::get_plugin_list('assignment')) {
         foreach ($plugins as $plugin=>$dir) {
             require_once("$dir/assignment.class.php");
             $assignmentclass = "assignment_$plugin";
@@ -3169,7 +3170,8 @@ function assignment_scale_used_anywhere($scaleid) {
  * @return boolean Always returns true
  */
 function assignment_refresh_events($courseid = 0) {
-    global $DB;
+    global $DB, $CFG;
+    require_once($CFG->dirroot.'/calendar/lib.php');
 
     if ($courseid == 0) {
         if (! $assignments = $DB->get_records("assignment")) {
@@ -3183,15 +3185,15 @@ function assignment_refresh_events($courseid = 0) {
     $moduleid = $DB->get_field('modules', 'id', array('name'=>'assignment'));
 
     foreach ($assignments as $assignment) {
-        $cm = get_coursemodule_from_id('assignment', $assignment->id);
+        $cm = get_coursemodule_from_instance('assignment', $assignment->id, $courseid, false, MUST_EXIST);
         $event = new stdClass();
         $event->name        = $assignment->name;
         $event->description = format_module_intro('assignment', $assignment, $cm->id);
         $event->timestart   = $assignment->timedue;
 
         if ($event->id = $DB->get_field('event', 'id', array('modulename'=>'assignment', 'instance'=>$assignment->id))) {
-            update_event($event);
-
+            $calendarevent = calendar_event::load($event->id);
+            $calendarevent->update($event);
         } else {
             $event->courseid    = $assignment->course;
             $event->groupid     = 0;
@@ -3201,7 +3203,7 @@ function assignment_refresh_events($courseid = 0) {
             $event->eventtype   = 'due';
             $event->timeduration = 0;
             $event->visible     = $DB->get_field('course_modules', 'visible', array('module'=>$moduleid, 'instance'=>$assignment->id));
-            add_event($event);
+            calendar_event::create($event);
         }
 
     }
@@ -3573,12 +3575,16 @@ function assignment_get_all_submissions($assignment, $sort="", $dir="DESC") {
     if ($assignment->course == SITEID) {
         $select = '';
     }*/
-
+    $cm = get_coursemodule_from_instance('assignment', $assignment->id, $assignment->course);
+    $context = context_module::instance($cm->id);
+    list($enroledsql, $params) = get_enrolled_sql($context, 'mod/assignment:submit');
+    $params['assignmentid'] = $assignment->id;
     return $DB->get_records_sql("SELECT a.*
-                                   FROM {assignment_submissions} a, {user} u
+                                    FROM {assignment_submissions} a
+                                    INNER JOIN (". $enroledsql .") u ON u.id = a.userid
                                   WHERE u.id = a.userid
-                                        AND a.assignment = ?
-                               ORDER BY $sort", array($assignment->id));
+                                        AND a.assignment = :assignmentid
+                                  ORDER BY $sort", $params);
 
 }
 
@@ -3589,7 +3595,7 @@ function assignment_get_all_submissions($assignment, $sort="", $dir="DESC") {
  * Given a course_module object, this function returns any "extra" information that may be needed
  * when printing this activity in a course listing.  See get_array_of_activities() in course/lib.php.
  *
- * @param $coursemodule object The coursemodule object (record).
+ * @param stdClass $coursemodule object The coursemodule object (record).
  * @return cached_cm_info An object on information that the courses will know about (most noticeably, an icon).
  */
 function assignment_get_coursemodule_info($coursemodule) {
@@ -3632,7 +3638,7 @@ function assignment_get_coursemodule_info($coursemodule) {
  */
 function assignment_types() {
     $types = array();
-    $names = get_plugin_list('assignment');
+    $names = core_component::get_plugin_list('assignment');
     foreach ($names as $name=>$dir) {
         $types[$name] = get_string('type'.$name, 'assignment');
 
@@ -3815,8 +3821,8 @@ function assignment_get_types() {
     }
 
     /// Drop-in extra assignment types
-    $assignmenttypes = get_list_of_plugins('mod/assignment/type');
-    foreach ($assignmenttypes as $assignmenttype) {
+    $assignmenttypes = core_component::get_plugin_list('assignment');
+    foreach ($assignmenttypes as $assignmenttype=>$fulldir) {
         if (!empty($CFG->{'assignment_hide_'.$assignmenttype})) {  // Not wanted
             continue;
         }
@@ -3875,7 +3881,7 @@ function assignment_reset_userdata($data) {
     global $CFG;
 
     $status = array();
-    foreach (get_plugin_list('assignment') as $type=>$dir) {
+    foreach (core_component::get_plugin_list('assignment') as $type=>$dir) {
         require_once("$dir/assignment.class.php");
         $assignmentclass = "assignment_$type";
         $ass = new $assignmentclass();

@@ -20,8 +20,7 @@
  * This plugin lets the user specify an IMS Enterprise file to be processed.
  * The IMS Enterprise file is mainly parsed on a regular cron,
  * but can also be imported via the UI (Admin Settings).
- * @package    enrol
- * @subpackage imsenterprise
+ * @package    enrol_imsenterprise
  * @copyright  2010 Eugene Venter
  * @author     Eugene Venter - based on code by Dan Stowell
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -97,6 +96,8 @@ function cron() {
 
         // Make sure we understand how to map the IMS-E roles to Moodle roles
         $this->load_role_mappings();
+        // Make sure we understand how to map the IMS-E course names to Moodle course names.
+        $this->load_course_mappings();
 
         $md5 = md5_file($filename); // NB We'll write this value back to the database at the end of the cron
         $filemtime = filemtime($filename);
@@ -321,15 +322,22 @@ function process_group_tag($tagcontents) {
     if (preg_match('{<sourcedid>.*?<id>(.+?)</id>.*?</sourcedid>}is', $tagcontents, $matches)) {
         $group->coursecode = trim($matches[1]);
     }
+<<<<<<< HEAD
     if (preg_match('{<description>.*?<long>(.*?)</long>.*?</description>}is', $tagcontents, $matches)) {
         $group->description = trim($matches[1]);
+=======
+
+    if (preg_match('{<description>.*?<long>(.*?)</long>.*?</description>}is', $tagcontents, $matches)) {
+        $group->long = trim($matches[1]);
+>>>>>>> 838d78a9ff4290e2bca304a5232204f04fc910ec
     }
     if (preg_match('{<description>.*?<short>(.*?)</short>.*?</description>}is', $tagcontents, $matches)) {
-        $group->shortName = trim($matches[1]);
+        $group->short = trim($matches[1]);
     }
     if (preg_match('{<description>.*?<full>(.*?)</full>.*?</description>}is', $tagcontents, $matches)) {
-        $group->fulldescription = trim($matches[1]);
+        $group->full = trim($matches[1]);
     }
+
     if (preg_match('{<org>.*?<orgunit>(.*?)</orgunit>.*?</org>}is', $tagcontents, $matches)) {
         $group->category = trim($matches[1]);
     }
@@ -381,14 +389,32 @@ function process_group_tag($tagcontents) {
                 if (!$createnewcourses) {
                     $this->log_line("Course $coursecode not found in Moodle's course idnumbers.");
                 } else {
+<<<<<<< HEAD
+=======
+
+>>>>>>> 838d78a9ff4290e2bca304a5232204f04fc910ec
                     // Create the (hidden) course(s) if not found
                     $courseconfig = get_config('moodlecourse'); // Load Moodle Course shell defaults
+
+                    // New course.
                     $course = new stdClass();
-                    $course->fullname = $group->description;
-                    $course->shortname = $group->shortName;
-                    if (!empty($group->fulldescription)) {
-                        $course->summary = format_text($group->fulldescription, FORMAT_HTML);
+                    foreach ($this->coursemappings as $courseattr => $imsname) {
+
+                        if ($imsname == 'ignore') {
+                            continue;
+                        }
+
+                        // Check if the IMS file contains the mapped tag, otherwise fallback on coursecode.
+                        if ($imsname == 'coursecode') {
+                            $course->{$courseattr} = $coursecode;
+                        } else if (!empty($group->{$imsname})) {
+                            $course->{$courseattr} = $group->{$imsname};
+                        } else {
+                            $this->log_line('No ' . $imsname . ' description tag found for ' . $coursecode . ' coursecode, using ' . $coursecode . ' instead');
+                            $course->{$courseattr} = $coursecode;
+                        }
                     }
+
                     $course->idnumber = $coursecode;
                     $course->format = $courseconfig->format;
                     $course->visible = $courseconfig->visible;
@@ -399,7 +425,6 @@ function process_group_tag($tagcontents) {
                     $course->groupmode = $courseconfig->groupmode;
                     $course->groupmodeforce = $courseconfig->groupmodeforce;
                     $course->enablecompletion = $courseconfig->enablecompletion;
-                    $course->completionstartonenrol = $courseconfig->completionstartonenrol;
                     // Insert default names for teachers/students, from the current language
 
                     // Handle course categorisation (taken from the group.org.orgunit field if present)
@@ -449,7 +474,6 @@ function process_group_tag($tagcontents) {
                     $course->startdate = time();
                     // Choose a sort order that puts us at the start of the list!
                     $course->sortorder = 0;
-
                     $courseid = $DB->insert_record('course', $course);
 
                     // Setup default enrolment plugins
@@ -565,6 +589,7 @@ function process_person_tag($tagcontents){
 
 
     // Now if the recstatus is 3, we should delete the user if-and-only-if the setting for delete users is turned on
+<<<<<<< HEAD
     // In the "users" table we can do this by setting deleted=1
     if ($recstatus==3) {
         if ($imsdeleteusers) { // If we're allowed to delete user records
@@ -572,6 +597,22 @@ function process_person_tag($tagcontents){
             $DB->set_field('user', 'deleted', 1, array('username'=>$person->username));
             $this->log_line("Marked user record for user '$person->username' (ID number $person->idnumber) as deleted.");
         } else {
+=======
+    if($recstatus==3){
+
+        if($imsdeleteusers){ // If we're allowed to delete user records
+            // Do not dare to hack the user.deleted field directly in database!!!
+            if ($user = $DB->get_record('user', array('username'=>$person->username, 'mnethostid'=>$CFG->mnet_localhost_id, 'deleted'=>0))) {
+                if (delete_user($user)) {
+                    $this->log_line("Deleted user '$person->username' (ID number $person->idnumber).");
+                } else {
+                    $this->log_line("Error deleting '$person->username' (ID number $person->idnumber).");
+                }
+            } else {
+                $this->log_line("Can not delete user '$person->username' (ID number $person->idnumber) - user does not exist.");
+            }
+        }else{
+>>>>>>> 838d78a9ff4290e2bca304a5232204f04fc910ec
             $this->log_line("Ignoring deletion request for user '$person->username' (ID number $person->idnumber).");
         }
 
@@ -599,10 +640,17 @@ function process_person_tag($tagcontents){
             } else {
 
             // If they don't exist and they have a defined username, and $createnewusers == true, we create them.
+<<<<<<< HEAD
             $person->lang = 'manual'; //TODO: this needs more work due tu multiauth changes
             if (!$person->auth) {
                 $person->auth = $CFG->auth;
             }
+=======
+            $person->lang = $CFG->lang;
+            $auth = explode(',', $CFG->auth); //TODO: this needs more work due tu multiauth changes, use first auth for now
+            $auth = reset($auth);
+            $person->auth = $auth;
+>>>>>>> 838d78a9ff4290e2bca304a5232204f04fc910ec
             $person->confirmed = 1;
             $person->timemodified = time();
             $person->mnethostid = $CFG->mnet_localhost_id;
@@ -630,9 +678,15 @@ function process_person_tag($tagcontents){
         } elseif ($createnewusers) {
             $this->log_line("User record already exists for user '$person->username' (ID number $person->idnumber).");
 
+<<<<<<< HEAD
             // Make sure their "deleted" field is set to zero.
             $DB->set_field('user', 'deleted', 0, array('idnumber'=>$person->idnumber));
         } else {
+=======
+            // It is totally wrong to mess with deleted users flag directly in database!!!
+            // There is no official way to undelete user, sorry..
+        }else{
+>>>>>>> 838d78a9ff4290e2bca304a5232204f04fc910ec
             $this->log_line("No user record found for '$person->username' (ID number $person->idnumber).");
         }
 
@@ -760,6 +814,8 @@ function process_membership_tag($tagcontents){
                                 $this->log_line('Added a new group for this course: '.$group->name);
                                 $groupids[$member->groupname] = $groupid; // Store ID in cache
                                 $member->groupid = $groupid;
+                                // Invalidate the course group data cache just in case.
+                                cache_helper::invalidate_by_definition('core', 'groupdata', array(), array($ship->courseid));
                             }
                         }
                         // Add the user-to-group association if it doesn't already exist
@@ -817,8 +873,16 @@ function process_properties_tag($tagcontents){
 * @param string $string Text to write (newline will be added automatically)
 */
 function log_line($string){
+<<<<<<< HEAD
     mtrace($string);
     if ($this->logfp) {
+=======
+
+    if (!PHPUNIT_TEST) {
+        mtrace($string);
+    }
+    if($this->logfp) {
+>>>>>>> 838d78a9ff4290e2bca304a5232204f04fc910ec
         fwrite($this->logfp, $string . "\n");
     }
 }
@@ -859,6 +923,22 @@ function load_role_mappings() {
 }
 
     /**
+     * Load the name mappings (from the config), so we can easily refer to
+     * how an IMS-E course properties corresponds to a Moodle course properties
+     */
+    function load_course_mappings() {
+        require_once('locallib.php');
+
+        $imsnames = new imsenterprise_courses();
+        $courseattrs = $imsnames->get_courseattrs();
+
+        $this->coursemappings = array();
+        foreach($courseattrs as $courseattr) {
+            $this->coursemappings[$courseattr] = $this->get_config('imscoursemap' . $courseattr);
+        }
+    }
+
+    /**
      * Called whenever anybody tries (from the normal interface) to remove a group
      * member which is registered as being created by this component. (Not called
      * when deleting an entire group or course at once.)
@@ -870,6 +950,7 @@ function load_role_mappings() {
     function enrol_imsenterprise_allow_group_member_remove($itemid, $groupid, $userid) {
         return false;
     }
+
 
 } // end of class
 

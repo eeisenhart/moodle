@@ -75,6 +75,12 @@ class cachestore_memcached extends cache_store implements cache_is_configurable 
     protected $isready = false;
 
     /**
+     * Set to true when this store instance has been initialised.
+     * @var bool
+     */
+    protected $isinitialised = false;
+
+    /**
      * The cache definition this store was initialised with.
      * @var cache_definition
      */
@@ -127,7 +133,15 @@ class cachestore_memcached extends cache_store implements cache_is_configurable 
         $this->options[Memcached::OPT_HASH] = $hashmethod;
         $this->options[Memcached::OPT_BUFFER_WRITES] = $bufferwrites;
 
-        $this->isready = true;
+        $this->connection = new Memcached(crc32($this->name));
+        $servers = $this->connection->getServerList();
+        if (empty($servers)) {
+            foreach ($this->options as $key => $value) {
+                $this->connection->setOption($key, $value);
+            }
+            $this->connection->addServers($this->servers);
+        }
+        $this->isready = @$this->connection->set("ping", 'ping', 1);
     }
 
     /**
@@ -142,14 +156,7 @@ class cachestore_memcached extends cache_store implements cache_is_configurable 
             throw new coding_exception('This memcached instance has already been initialised.');
         }
         $this->definition = $definition;
-        $this->connection = new Memcached(crc32($this->name));
-        $servers = $this->connection->getServerList();
-        if (empty($servers)) {
-            foreach ($this->options as $key => $value) {
-                $this->connection->setOption($key, $value);
-            }
-            $this->connection->addServers($this->servers);
-        }
+        $this->isinitialised = true;
     }
 
     /**
@@ -158,7 +165,7 @@ class cachestore_memcached extends cache_store implements cache_is_configurable 
      * @return bool
      */
     public function is_initialised() {
-        return ($this->connection !== null);
+        return ($this->isinitialised);
     }
 
     /**
@@ -196,6 +203,17 @@ class cachestore_memcached extends cache_store implements cache_is_configurable 
      */
     public static function get_supported_features(array $configuration = array()) {
         return self::SUPPORTS_NATIVE_TTL;
+    }
+
+    /**
+     * Returns false as this store does not support multiple identifiers.
+     * (This optional function is a performance optimisation; it must be
+     * consistent with the value from get_supported_features.)
+     *
+     * @return bool False
+     */
+    public function supports_multiple_identifiers() {
+        return false;
     }
 
     /**
@@ -302,7 +320,10 @@ class cachestore_memcached extends cache_store implements cache_is_configurable 
      * @return boolean True on success. False otherwise.
      */
     public function purge() {
-        $this->connection->flush();
+        if ($this->isready) {
+            $this->connection->flush();
+        }
+
         return true;
     }
 
@@ -318,7 +339,7 @@ class cachestore_memcached extends cache_store implements cache_is_configurable 
             $options[Memcached::SERIALIZER_JSON] = get_string('serialiser_json', 'cachestore_memcached');
         }
         if (Memcached::HAVE_IGBINARY) {
-            $options[Memcached::SERIALIZER_IGBINARY] = get_string('serialiser_php', 'cachestore_memcached');
+            $options[Memcached::SERIALIZER_IGBINARY] = get_string('serialiser_igbinary', 'cachestore_memcached');
         }
         return $options;
     }
@@ -401,15 +422,29 @@ class cachestore_memcached extends cache_store implements cache_is_configurable 
     /**
      * Performs any necessary clean up when the store instance is being deleted.
      */
-    public function cleanup() {
-        $this->purge();
+    public function instance_deleted() {
+        if ($this->connection) {
+            $connection = $this->connection;
+        } else {
+            $connection = new Memcached(crc32($this->name));
+            $servers = $connection->getServerList();
+            if (empty($servers)) {
+                foreach ($this->options as $key => $value) {
+                    $connection->setOption($key, $value);
+                }
+                $connection->addServers($this->servers);
+            }
+        }
+        @$connection->flush();
+        unset($connection);
+        unset($this->connection);
     }
 
     /**
      * Generates an instance of the cache store that can be used for testing.
      *
      * @param cache_definition $definition
-     * @return false
+     * @return cachestore_memcached|false
      */
     public static function initialise_test_instance(cache_definition $definition) {
 

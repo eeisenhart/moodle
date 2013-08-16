@@ -129,15 +129,6 @@ abstract class pdo_moodle_database extends moodle_database {
     }
 
     /**
-     * Returns localised database description
-     * Note: can be used before connect()
-     * @return string
-     */
-    public function get_configuration_hints() {
-        return get_string('databasesettingssub_' . $this->get_dbtype() . '_pdo', 'install');
-    }
-
-    /**
      * Returns database server info array
      * @return array Array containing 'description' and 'version' info
      */
@@ -172,7 +163,7 @@ abstract class pdo_moodle_database extends moodle_database {
      * Function to print/save/ignore debugging messages related to SQL queries.
      */
     protected function debug_query($sql, $params = null) {
-        echo '<hr /> (', $this->get_dbtype(), '): ',  htmlentities($sql);
+        echo '<hr /> (', $this->get_dbtype(), '): ',  htmlentities($sql, ENT_QUOTES, 'UTF-8');
         if($params) {
             echo ' (parameters ';
             print_r($params);

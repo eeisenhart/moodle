@@ -50,7 +50,7 @@ if ($course->id != SITEID) {
     }
     redirect(get_login_url());
 } else {
-    $PAGE->set_context(get_system_context());
+    $PAGE->set_context(context_system::instance());
     $PAGE->set_pagelayout('standard');
 }
 
@@ -224,7 +224,7 @@ if ($usernew = $userform->get_data()) {
     }
 
     //update user picture
-    if (!empty($CFG->gdversion) and empty($CFG->disableuserimages)) {
+    if (empty($CFG->disableuserimages)) {
         useredit_update_picture($usernew, $userform, $filemanageroptions);
     }
 

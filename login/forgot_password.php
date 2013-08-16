@@ -27,6 +27,7 @@
  */
 
 require('../config.php');
+require_once($CFG->libdir.'/authlib.php');
 require_once('forgot_password_form.php');
 
 $p_secret   = optional_param('p', false, PARAM_RAW);
@@ -63,8 +64,6 @@ if ($p_secret !== false) {
 /// user clicked on link in email message
 ///=====================
 
-    update_login_count();
-
     $user = $DB->get_record('user', array('username'=>$p_username, 'mnethostid'=>$CFG->mnet_localhost_id, 'deleted'=>0, 'suspended'=>0));
 
     if ($user and ($user->auth === 'nologin' or !is_enabled_auth($user->auth))) {
@@ -83,6 +82,9 @@ if ($p_secret !== false) {
             print_error('cannotresetguestpwd');
         }
 
+        // Reset login lockout even of the password reset fails.
+        login_unlock_account($user);
+
         // make sure user is allowed to change password
         require_capability('moodle/user:changeownpassword', $systemcontext, $user->id);
 
@@ -93,8 +95,6 @@ if ($p_secret !== false) {
         // Clear secret so that it can not be used again
         $user->secret = '';
         $DB->set_field('user', 'secret', $user->secret, array('id'=>$user->id));
-
-        reset_login_count();
 
         $changepasswordurl = "{$CFG->httpswwwroot}/login/change_password.php";
         $a = new stdClass();
@@ -126,7 +126,7 @@ if ($mform->is_cancelled()) {
 
     // first try the username
     if (!empty($data->username)) {
-        $username = textlib::strtolower($data->username); // mimic the login page process, if they forget username they need to use email for reset
+        $username = core_text::strtolower($data->username); // mimic the login page process, if they forget username they need to use email for reset
         $user = $DB->get_record('user', array('username'=>$username, 'mnethostid'=>$CFG->mnet_localhost_id, 'deleted'=>0, 'suspended'=>0));
 
     } else {

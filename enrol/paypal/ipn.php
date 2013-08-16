@@ -22,8 +22,7 @@
  * If PayPal verifies this then it sets up the enrolment for that
  * user.
  *
- * @package    enrol
- * @subpackage paypal
+ * @package    enrol_paypal
  * @copyright 2010 Eugene Venter
  * @author     Eugene Venter - based on code by others
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -90,13 +89,14 @@ if (! $plugin_instance = $DB->get_record("enrol", array("id"=>$data->instanceid,
 $plugin = enrol_get_plugin('paypal');
 
 /// Open a connection back to PayPal to validate the data
+$paypaladdr = empty($CFG->usepaypalsandbox) ? 'www.paypal.com' : 'www.sandbox.paypal.com';
 $c = new curl();
 $options = array(
     'returntransfer' => true,
-    'httpheader' => array('application/x-www-form-urlencoded'),
+    'httpheader' => array('application/x-www-form-urlencoded', "Host: $paypaladdr"),
     'timeout' => 30,
+    'CURLOPT_HTTP_VERSION' => CURL_HTTP_VERSION_1_1,
 );
-$paypaladdr = empty($CFG->usepaypalsandbox) ? 'www.paypal.com' : 'www.sandbox.paypal.com';
 $location = "https://$paypaladdr/cgi-bin/webscr";
 $result = $c->post($location, $req, $options);
 
@@ -171,7 +171,7 @@ if (strlen($result) > 0) {
 
         }
 
-        if ($data->business != $plugin->get_config('paypalbusiness')) {   // Check that the email is the one we want it to be
+        if (core_text::strtolower($data->business) !== core_text::strtolower($plugin->get_config('paypalbusiness'))) {   // Check that the email is the one we want it to be
             message_paypal_error_to_admin("Business email is {$data->business} (not ".
                     $plugin->get_config('paypalbusiness').")", $data);
             die;
@@ -184,7 +184,7 @@ if (strlen($result) > 0) {
         }
 
         if (!$course = $DB->get_record('course', array('id'=>$data->courseid))) { // Check that course exists
-            message_paypal_error_to_admin("Course $data->courseid doesn't exist", $data);;
+            message_paypal_error_to_admin("Course $data->courseid doesn't exist", $data);
             die;
         }
 
@@ -197,8 +197,10 @@ if (strlen($result) > 0) {
             $cost = (float) $plugin_instance->cost;
         }
 
+        // Use the same rounding of floats as on the enrol form.
+        $cost = format_float($cost, 2, false);
+
         if ($data->payment_gross < $cost) {
-            $cost = format_float($cost, 2);
             message_paypal_error_to_admin("Amount paid is not enough ($data->payment_gross < $cost))", $data);
             die;
 

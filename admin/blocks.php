@@ -1,6 +1,6 @@
 <?php
 
-    // Allows the admin to configure blocks (hide/show, delete and configure)
+    // Allows the admin to configure blocks (hide/show, uninstall and configure)
 
     require_once('../config.php');
     require_once($CFG->libdir.'/adminlib.php');
@@ -11,14 +11,13 @@
     $confirm  = optional_param('confirm', 0, PARAM_BOOL);
     $hide     = optional_param('hide', 0, PARAM_INT);
     $show     = optional_param('show', 0, PARAM_INT);
-    $delete   = optional_param('delete', 0, PARAM_INT);
     $unprotect = optional_param('unprotect', 0, PARAM_INT);
     $protect = optional_param('protect', 0, PARAM_INT);
 
 /// Print headings
 
     $strmanageblocks = get_string('manageblocks');
-    $strdelete = get_string('delete');
+    $struninstall = get_string('uninstallplugin', 'core_admin');
     $strversion = get_string('version');
     $strhide = get_string('hide');
     $strshow = get_string('show');
@@ -29,6 +28,9 @@
     $strprotecthdr = get_string('blockprotect', 'admin'). $OUTPUT->help_icon('blockprotect','admin');
     $strprotect = get_string('blockprotect', 'admin');
     $strunprotect = get_string('blockunprotect', 'admin');
+
+    // Purge all caches related to blocks administration.
+    cache::make('core', 'plugininfo_block')->purge();
 
 /// If data submitted, then process and store.
 
@@ -78,35 +80,6 @@
         admin_get_root(true, false);  // settings not required - only pages
     }
 
-    if (!empty($delete) && confirm_sesskey()) {
-        echo $OUTPUT->header();
-        echo $OUTPUT->heading($strmanageblocks);
-
-        if (!$block = blocks_get_record($delete)) {
-            print_error('blockdoesnotexist', 'error');
-        }
-
-        if (get_string_manager()->string_exists('pluginname', "block_$block->name")) {
-            $strblockname = get_string('pluginname', "block_$block->name");
-        } else {
-            $strblockname = $block->name;
-        }
-
-        if (!$confirm) {
-            echo $OUTPUT->confirm(get_string('blockdeleteconfirm', '', $strblockname), 'blocks.php?delete='.$block->id.'&confirm=1', 'blocks.php');
-            echo $OUTPUT->footer();
-            exit;
-
-        } else {
-            uninstall_plugin('block', $block->name);
-
-            $a = new stdClass();
-            $a->block = $strblockname;
-            $a->directory = $CFG->dirroot.'/blocks/'.$block->name;
-            notice(get_string('blockdeletefiles', '', $a), 'blocks.php');
-        }
-    }
-
     echo $OUTPUT->header();
     echo $OUTPUT->heading($strmanageblocks);
 
@@ -124,10 +97,11 @@
 
     $table = new flexible_table('admin-blocks-compatible');
 
-    $table->define_columns(array('name', 'instances', 'version', 'hideshow', 'undeletable', 'delete', 'settings'));
-    $table->define_headers(array($strname, $strcourses, $strversion, $strhide.'/'.$strshow, $strprotecthdr, $strdelete, $strsettings));
+    $table->define_columns(array('name', 'instances', 'version', 'hideshow', 'undeletable', 'uninstall', 'settings'));
+    $table->define_headers(array($strname, $strcourses, $strversion, $strhide.'/'.$strshow, $strprotecthdr, $struninstall, $strsettings));
     $table->define_baseurl($CFG->wwwroot.'/'.$CFG->admin.'/blocks.php');
-    $table->set_attribute('class', 'compatibleblockstable blockstable generaltable');
+    $table->set_attribute('class', 'admintable blockstable generaltable');
+    $table->set_attribute('id', 'compatibleblockstable');
     $table->setup();
     $tablerows = array();
 
@@ -141,7 +115,7 @@
             $blocknames[$blockid] = $blockname;
         }
     }
-    collatorlib::asort($blocknames);
+    core_collator::asort($blocknames);
 
     foreach ($blocknames as $blockid=>$strblockname) {
         $block = $blocks[$blockid];
@@ -166,7 +140,11 @@
             }
         }
 
-        $delete = '<a href="blocks.php?delete='.$blockid.'&amp;sesskey='.sesskey().'">'.$strdelete.'</a>';
+        if ($uninstallurl = plugin_manager::instance()->get_uninstall_url('block_'.$blockname)) {
+            $uninstall = html_writer::link($uninstallurl, $struninstall);
+        } else {
+            $uninstall = '';
+        }
 
         $settings = ''; // By default, no configuration
         if ($blockobject and $blockobject->has_config()) {
@@ -231,7 +209,7 @@
             '<span'.$class.'>'.$version.'</span>',
             $visible,
             $undeletable,
-            $delete,
+            $uninstall,
             $settings
         );
         $table->add_data($row);
@@ -244,8 +222,8 @@
 
         $table = new flexible_table('admin-blocks-incompatible');
 
-        $table->define_columns(array('block', 'delete'));
-        $table->define_headers(array($strname, $strdelete));
+        $table->define_columns(array('block', 'uninstall'));
+        $table->define_headers(array($strname, $struninstall));
         $table->define_baseurl($CFG->wwwroot.'/'.$CFG->admin.'/blocks.php');
 
         $table->set_attribute('class', 'incompatibleblockstable generaltable');
@@ -253,9 +231,14 @@
         $table->setup();
 
         foreach ($incompatible as $block) {
+            if ($uninstallurl = plugin_manager::instance()->get_uninstall_url('block_'.$block->name)) {
+                $uninstall = html_writer::link($uninstallurl, $struninstall);
+            } else {
+                $uninstall = '';
+            }
             $table->add_data(array(
                 $block->name,
-                '<a href="blocks.php?delete='.$block->id.'&amp;sesskey='.sesskey().'">'.$strdelete.'</a>',
+                $uninstall,
             ));
         }
         $table->print_html();

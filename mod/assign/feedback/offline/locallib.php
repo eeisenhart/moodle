@@ -80,7 +80,7 @@ class assign_feedback_offline extends assign_feedback_plugin {
 
         $gradeimporter = new assignfeedback_offline_grade_importer($importid, $this->assignment);
 
-        $context = get_context_instance(CONTEXT_USER, $USER->id);
+        $context = context_user::instance($USER->id);
         $fs = get_file_storage();
         if (!$files = $fs->get_area_files($context->id, 'user', 'draft', $draftid, 'id DESC', false)) {
             redirect(new moodle_url('view.php',
@@ -131,6 +131,8 @@ class assign_feedback_offline extends assign_feedback_plugin {
                 } else {
                     $record->grade = '';
                 }
+            } else {
+                $record->grade = unformat_float($record->grade);
             }
 
             // Note: Do not count the seconds when comparing modified dates.
@@ -149,6 +151,10 @@ class assign_feedback_offline extends assign_feedback_plugin {
             } else if ($this->assignment->grading_disabled($record->user->id)) {
                 // Skip grade is locked.
                 $skip = true;
+            } else if (($this->assignment->get_instance()->grade > -1) &&
+                      (($record->grade < 0) || ($record->grade > $this->assignment->get_instance()->grade))) {
+                // Out of range.
+                $skip = true;
             }
 
             if (!$skip) {
@@ -157,6 +163,7 @@ class assign_feedback_offline extends assign_feedback_plugin {
                 $grade->grade = $record->grade;
                 $grade->grader = $USER->id;
                 if ($this->assignment->update_grade($grade)) {
+                    $this->assignment->notify_grade_modified($grade);
                     $this->assignment->add_to_log('grade submission', $this->assignment->format_grade_for_log($grade));
                     $updatecount += 1;
                 }
@@ -178,6 +185,7 @@ class assign_feedback_offline extends assign_feedback_plugin {
                     if ($newvalue != $oldvalue) {
                         $updatecount += 1;
                         $grade = $this->assignment->get_user_grade($record->user->id, true);
+                        $this->assignment->notify_grade_modified($grade);
                         if ($plugin->set_editor_text($field, $newvalue, $grade->id)) {
                             $logdesc = get_string('feedbackupdate', 'assignfeedback_offline',
                                                   array('field'=>$description,

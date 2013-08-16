@@ -86,9 +86,11 @@ function groups_get_grouping_name($groupingid) {
  * @return int $groupid
  */
 function groups_get_group_by_name($courseid, $name) {
-    global $DB;
-    if ($groups = $DB->get_records('groups', array('courseid'=>$courseid, 'name'=>$name))) {
-        return key($groups);
+    $data = groups_get_course_data($courseid);
+    foreach ($data->groups as $group) {
+        if ($group->name == $name) {
+            return $group->id;
+        }
     }
     return false;
 }
@@ -103,11 +105,14 @@ function groups_get_group_by_name($courseid, $name) {
  * @return group object
  */
 function groups_get_group_by_idnumber($courseid, $idnumber) {
-    global $DB;
     if (empty($idnumber)) {
         return false;
-    } else if ($group = $DB->get_record('groups', array('courseid' => $courseid, 'idnumber' => $idnumber))) {
-        return $group;
+    }
+    $data = groups_get_course_data($courseid);
+    foreach ($data->groups as $group) {
+        if ($group->idnumber == $idnumber) {
+            return $group;
+        }
     }
     return false;
 }
@@ -122,9 +127,11 @@ function groups_get_group_by_idnumber($courseid, $idnumber) {
  * @return int $groupid
  */
 function groups_get_grouping_by_name($courseid, $name) {
-    global $DB;
-    if ($groupings = $DB->get_records('groupings', array('courseid'=>$courseid, 'name'=>$name))) {
-        return key($groupings);
+    $data = groups_get_course_data($courseid);
+    foreach ($data->groupings as $grouping) {
+        if ($grouping->name == $name) {
+            return $grouping->id;
+        }
     }
     return false;
 }
@@ -139,11 +146,14 @@ function groups_get_grouping_by_name($courseid, $name) {
  * @return grouping object
  */
 function groups_get_grouping_by_idnumber($courseid, $idnumber) {
-    global $DB;
     if (empty($idnumber)) {
         return false;
-    } else if ($grouping = $DB->get_record('groupings', array('courseid' => $courseid, 'idnumber' => $idnumber))) {
-        return $grouping;
+    }
+    $data = groups_get_course_data($courseid);
+    foreach ($data->groupings as $grouping) {
+        if ($grouping->idnumber == $idnumber) {
+            return $grouping;
+        }
     }
     return false;
 }
@@ -189,6 +199,42 @@ function groups_get_grouping($groupingid, $fields='*', $strictness=IGNORE_MISSIN
 function groups_get_all_groups($courseid, $userid=0, $groupingid=0, $fields='g.*') {
     global $DB;
 
+    // We need to check that we each field in the fields list belongs to the group table and that it has not being
+    // aliased. If its something else we need to avoid the cache and run the query as who knows whats going on.
+    $knownfields = true;
+    if ($fields !== 'g.*') {
+        $fieldbits = explode(',', $fields);
+        foreach ($fieldbits as $bit) {
+            $bit = trim($bit);
+            if (strpos($bit, 'g.') !== 0 or stripos($bit, ' AS ') !== false) {
+                $knownfields = false;
+                break;
+            }
+        }
+    }
+
+    if (empty($userid) && $knownfields) {
+        // We can use the cache.
+        $data = groups_get_course_data($courseid);
+        if (empty($groupingid)) {
+            // All groups.. Easy!
+            $groups = $data->groups;
+        } else {
+            $groups = array();
+            foreach ($data->mappings as $mapping) {
+                if ($mapping->groupingid != $groupingid) {
+                    continue;
+                }
+                if (isset($data->groups[$mapping->groupid])) {
+                    $groups[$mapping->groupid] = $data->groups[$mapping->groupid];
+                }
+            }
+        }
+        // Yay! We could use the cache. One more query saved.
+        return $groups;
+    }
+
+
     if (empty($userid)) {
         $userfrom  = "";
         $userwhere = "";
@@ -215,6 +261,24 @@ function groups_get_all_groups($courseid, $userid=0, $groupingid=0, $fields='g.*
                                    FROM {groups} g $userfrom $groupingfrom
                                   WHERE g.courseid = ? $userwhere $groupingwhere
                                ORDER BY name ASC", $params);
+}
+
+
+/**
+ * Gets array of all groups in current user.
+ *
+ * @since Moodle 2.5
+ * @category group
+ * @return array Returns an array of the group objects.
+ */
+function groups_get_my_groups() {
+    global $DB, $USER;
+    return $DB->get_records_sql("SELECT *
+                                   FROM {groups_members} gm
+                                   JOIN {groups} g
+                                    ON g.id = gm.groupid
+                                  WHERE gm.userid = ?
+                                   ORDER BY name ASC", array($USER->id));
 }
 
 /**
@@ -276,22 +340,8 @@ function groups_get_user_groups($courseid, $userid=0) {
  * @return array Returns an array of the grouping objects (empty if none)
  */
 function groups_get_all_groupings($courseid) {
-    global $CFG, $DB, $GROUPLIB_CACHE;
-
-    // Use cached data if available. (Note: We only cache a single request, so
-    // as not to waste memory if processing is happening for multiple courses.)
-    if (!empty($GROUPLIB_CACHE->groupings) &&
-            $GROUPLIB_CACHE->groupings->courseid == $courseid) {
-        return $GROUPLIB_CACHE->groupings->result;
-    }
-    if (empty($GROUPLIB_CACHE)) {
-        $GROUPLIB_CACHE = new stdClass();
-    }
-    $GROUPLIB_CACHE->groupings = new stdClass();
-    $GROUPLIB_CACHE->groupings->courseid = $courseid;
-    $GROUPLIB_CACHE->groupings->result =
-            $DB->get_records('groupings', array('courseid' => $courseid), 'name ASC');
-    return $GROUPLIB_CACHE->groupings->result;
+    $data = groups_get_course_data($courseid);
+    return $data->groupings;
 }
 
 /**
@@ -414,22 +464,19 @@ function groups_get_course_groupmode($course) {
  * overrides activity setting if groupmodeforce enabled.
  *
  * @category group
- * @param cm_info $cm the course module object. Only the ->course and ->groupmode need to be set.
+ * @param cm_info|stdClass $cm the course module object. Only the ->course and ->groupmode need to be set.
  * @param stdClass $course object optional course object to improve perf
  * @return int group mode
  */
 function groups_get_activity_groupmode($cm, $course=null) {
-    global $COURSE, $DB;
-
-    // get course object (reuse COURSE if possible)
     if (isset($course->id) and $course->id == $cm->course) {
         //ok
-    } else if ($cm->course == $COURSE->id) {
-        $course = $COURSE;
+    } else if (isset($cm->coursegroupmode) && isset($cm->coursegroupmodeforce)) {
+        // This is an instance of cm_info (or clone) and already has the necessary course fields in it.
+        return empty($cm->coursegroupmodeforce) ? $cm->groupmode : $cm->coursegroupmode;
     } else {
-        if (!$course = $DB->get_record('course', array('id'=>$cm->course))) {
-            print_error('invalidcourseid');
-        }
+        // Get course object (reuse $COURSE if possible).
+        $course = get_course($cm->course, false);
     }
 
     return empty($course->groupmodeforce) ? $cm->groupmode : $course->groupmode;
@@ -726,7 +773,7 @@ function groups_get_activity_allowed_groups($cm,$userid=0) {
     // If visible groups mode, or user has the accessallgroups capability,
     // then they can access all groups for the activity...
     $context = context_module::instance($cm->id);
-    if ($groupmode == VISIBLEGROUPS or has_capability('moodle/site:accessallgroups', $context)) {
+    if ($groupmode == VISIBLEGROUPS or has_capability('moodle/site:accessallgroups', $context, $userid)) {
         return groups_get_all_groups($cm->course, 0, $cm->groupingid);
     } else {
         // ...otherwise they can only access groups they belong to
@@ -758,6 +805,44 @@ function groups_course_module_visible($cm, $userid=null) {
     }
     if (has_capability('moodle/site:accessallgroups', context_module::instance($cm->id), $userid) or groups_has_membership($cm, $userid)) {
         return true;
+    }
+    return false;
+}
+
+/**
+ * Determine if a given group is visible to user or not in a given context.
+ *
+ * @since Moodle 2.6
+ * @param int      $groupid Group id to test. 0 for all groups.
+ * @param stdClass $course  Course object.
+ * @param stdClass $cm      Course module object.
+ * @param int      $userid  user id to test against. Defaults to $USER.
+ * @return boolean true if visible, false otherwise
+ */
+function groups_group_visible($groupid, $course, $cm = null, $userid = null) {
+    global $USER;
+
+    if (empty($userid)) {
+        $userid = $USER->id;
+    }
+
+    $groupmode = empty($cm) ? groups_get_course_groupmode($course) : groups_get_activity_groupmode($cm, $course);
+    if ($groupmode == NOGROUPS || $groupmode == VISIBLEGROUPS) {
+        // Groups are not used, or everything is visible, no need to go any further.
+        return true;
+    }
+
+    $context = empty($cm) ? context_course::instance($course->id) : context_module::instance($cm->id);
+    if (has_capability('moodle/site:accessallgroups', $context, $userid)) {
+        // User can see everything. Groupid = 0 is handled here as well.
+        return true;
+    } else if ($groupid != 0) {
+        // Group mode is separate, and user doesn't have access all groups capability. Check if user can see requested group.
+        $groups = empty($cm) ? groups_get_all_groups($course->id, $userid) : groups_get_activity_allowed_groups($cm, $userid);
+        if (array_key_exists($groupid, $groups)) {
+            // User can see the group.
+            return true;
+        }
     }
     return false;
 }
@@ -809,4 +894,75 @@ function _group_verify_activegroup($courseid, $groupmode, $groupingid, array $al
             $SESSION->activegroup[$courseid][$groupmode][$groupingid] = 0;
         }
     }
+}
+
+/**
+ * Caches group data for a particular course to speed up subsequent requests.
+ *
+ * @param int $courseid The course id to cache data for.
+ * @param cache $cache The cache if it has already been initialised. If not a new one will be created.
+ * @return stdClass A data object containing groups, groupings, and mappings.
+ */
+function groups_cache_groupdata($courseid, cache $cache = null) {
+    global $DB;
+
+    if ($cache === null) {
+        // Initialise a cache if we wern't given one.
+        $cache = cache::make('core', 'groupdata');
+    }
+
+    // Get the groups that belong to the course.
+    $groups = $DB->get_records('groups', array('courseid' => $courseid), 'name ASC');
+    // Get the groupings that belong to the course.
+    $groupings = $DB->get_records('groupings', array('courseid' => $courseid), 'name ASC');
+
+    if (!is_array($groups)) {
+        $groups = array();
+    }
+
+    if (!is_array($groupings)) {
+        $groupings = array();
+    }
+
+    if (!empty($groupings)) {
+        // Finally get the mappings between the two.
+        $mappings = $DB->get_records_list('groupings_groups', 'groupingid', array_keys($groupings), '', 'id,groupingid,groupid');
+    } else {
+        $mappings = array();
+    }
+
+    // Prepare the data array.
+    $data = new stdClass;
+    $data->groups = $groups;
+    $data->groupings = $groupings;
+    $data->mappings = $mappings;
+    // Cache the data.
+    $cache->set($courseid, $data);
+    // Finally return it so it can be used if desired.
+    return $data;
+}
+
+/**
+ * Gets group data for a course.
+ *
+ * This returns an object with the following properties:
+ *   - groups : An array of all the groups in the course.
+ *   - groupings : An array of all the groupings within the course.
+ *   - mappings : An array of group to grouping mappings.
+ *
+ * @param int $courseid The course id to get data for.
+ * @param cache $cache The cache if it has already been initialised. If not a new one will be created.
+ * @return stdClass
+ */
+function groups_get_course_data($courseid, cache $cache = null) {
+    if ($cache === null) {
+        // Initialise a cache if we wern't given one.
+        $cache = cache::make('core', 'groupdata');
+    }
+    // Try to retrieve it from the cache.
+    $data = $cache->get($courseid);
+    if ($data === false) {
+        $data = groups_cache_groupdata($courseid, $cache);
+    }
+    return $data;
 }

@@ -54,7 +54,7 @@ function toolbook_importhtml_import_chapters($package, $type, $book, $context, $
     }
     if ($type == 0) {
         $chapterfile = reset($chapterfiles);
-        if ($file = $fs->get_file_by_hash("$context->id/mod_book/importhtmltemp/0/$chapterfile->pathname")) {
+        if ($file = $fs->get_file_by_hash(sha1("$context->id/mod_book/importhtmltemp/0/$chapterfile->pathname"))) {
             $htmlcontent = toolbook_importhtml_fix_encoding($file->get_content());
             $htmlchapters = toolbook_importhtml_parse_headings(toolbook_importhtml_parse_body($htmlcontent));
             // TODO: process h1 as main chapter and h2 as subchapters
@@ -215,7 +215,7 @@ function toolbook_importhtml_fix_encoding($html) {
         $head = $matches[1];
         if (preg_match('/charset=([^"]+)/is', $head, $matches)) {
             $enc = $matches[1];
-            return textlib::convert($html, $enc, 'utf-8');
+            return core_text::convert($html, $enc, 'utf-8');
         }
     }
     return iconv('UTF-8', 'UTF-8//IGNORE', $html);
@@ -299,9 +299,9 @@ function toolbook_importhtml_get_chapter_files($package, $type) {
         }
     }
 
-    collatorlib::ksort($tophtmlfiles, collatorlib::SORT_NATURAL);
-    collatorlib::ksort($subhtmlfiles, collatorlib::SORT_NATURAL);
-    collatorlib::ksort($topdirs, collatorlib::SORT_NATURAL);
+    core_collator::ksort($tophtmlfiles, core_collator::SORT_NATURAL);
+    core_collator::ksort($subhtmlfiles, core_collator::SORT_NATURAL);
+    core_collator::ksort($topdirs, core_collator::SORT_NATURAL);
 
     $chapterfiles = array();
 
@@ -313,7 +313,7 @@ function toolbook_importhtml_get_chapter_files($package, $type) {
             if (empty($htmlfiles)) {
                 continue;
             }
-            collatorlib::ksort($htmlfiles, collatorlib::SORT_NATURAL);
+            core_collator::ksort($htmlfiles, core_collator::SORT_NATURAL);
             if (isset($htmlfiles[$dir.'/index.html'])) {
                 $htmlfile = $htmlfiles[$dir.'/index.html'];
             } else if (isset($htmlfiles[$dir.'/index.htm'])) {

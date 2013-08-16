@@ -53,7 +53,7 @@ class admin_uploaduser_form1 extends moodleform {
             $mform->setDefault('delimiter_name', 'comma');
         }
 
-        $choices = textlib::get_encodings();
+        $choices = core_text::get_encodings();
         $mform->addElement('select', 'encoding', get_string('encoding', 'tool_uploaduser'), $choices);
         $mform->setDefault('encoding', 'UTF-8');
 
@@ -202,11 +202,13 @@ class admin_uploaduser_form2 extends moodleform {
         $mform->addElement('header', 'defaultheader', get_string('defaultvalues', 'tool_uploaduser'));
 
         $mform->addElement('text', 'username', get_string('uuusernametemplate', 'tool_uploaduser'), 'size="20"');
+        $mform->setType('username', PARAM_RAW); // No cleaning here. The process verifies it later.
         $mform->addRule('username', get_string('requiredtemplate', 'tool_uploaduser'), 'required', null, 'client');
         $mform->disabledIf('username', 'uutype', 'eq', UU_USER_ADD_UPDATE);
         $mform->disabledIf('username', 'uutype', 'eq', UU_USER_UPDATE);
 
         $mform->addElement('text', 'email', get_string('email'), 'maxlength="100" size="30"');
+        $mform->setType('email', PARAM_RAW); // No cleaning here. The process verifies it later.
         $mform->disabledIf('email', 'uutype', 'eq', UU_USER_ADD_UPDATE);
         $mform->disabledIf('email', 'uutype', 'eq', UU_USER_UPDATE);
 
@@ -255,9 +257,10 @@ class admin_uploaduser_form2 extends moodleform {
         } else {
             $mform->setDefault('city', $CFG->defaultcity);
         }
-        $mform->addRule('city', get_string('required'), 'required');
 
-        $mform->addElement('select', 'country', get_string('selectacountry'), get_string_manager()->get_list_of_countries());
+        $choices = get_string_manager()->get_list_of_countries();
+        $choices = array(''=>get_string('selectacountry').'...') + $choices;
+        $mform->addElement('select', 'country', get_string('selectacountry'), $choices);
         if (empty($CFG->country)) {
             $mform->setDefault('country', $templateuser->country);
         } else {
@@ -282,6 +285,7 @@ class admin_uploaduser_form2 extends moodleform {
         $mform->setAdvanced('description');
 
         $mform->addElement('text', 'url', get_string('webpage'), 'maxlength="255" size="50"');
+        $mform->setType('url', PARAM_URL);
         $mform->setAdvanced('url');
 
         $mform->addElement('text', 'idnumber', get_string('idnumber'), 'maxlength="64" size="25"');

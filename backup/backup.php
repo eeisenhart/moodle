@@ -79,6 +79,10 @@ switch ($type) {
         print_error('unknownbackuptype');
 }
 
+// Backup of large courses requires extra memory. Use the amount configured
+// in admin settings.
+raise_memory_limit(MEMORY_EXTRA);
+
 if (!($bc = backup_ui::load_controller($backupid))) {
     $bc = new backup_controller($type, $id, backup::FORMAT_MOODLE,
                             backup::INTERACTIVE_YES, backup::MODE_GENERAL, $USER->id);
@@ -98,7 +102,7 @@ $PAGE->navbar->add($backup->get_stage_name());
 $renderer = $PAGE->get_renderer('core','backup');
 echo $OUTPUT->header();
 if ($backup->enforce_changed_dependencies()) {
-    echo $renderer->dependency_notification(get_string('dependenciesenforced','backup'));
+    debugging('Your settings have been altered due to unmet dependencies', DEBUG_DEVELOPER);
 }
 echo $renderer->progress_bar($backup->get_progress_bar());
 echo $backup->display($renderer);

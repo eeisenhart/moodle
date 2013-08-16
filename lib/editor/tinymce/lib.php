@@ -27,7 +27,7 @@ defined('MOODLE_INTERNAL') || die();
 
 class tinymce_texteditor extends texteditor {
     /** @var string active version - this is the directory name where to find tinymce code */
-    public $version = '3.5.7b';
+    public $version = '3.5.8';
 
     /**
      * Is the current browser supported by this editor?
@@ -50,6 +50,9 @@ class tinymce_texteditor extends texteditor {
             return true;
         }
         if (check_browser_version('Safari iOS', 534)) {
+            return true;
+        }
+        if (check_browser_version('WebKit', 534)) {
             return true;
         }
 
@@ -95,12 +98,12 @@ class tinymce_texteditor extends texteditor {
      * @param null $fpoptions
      */
     public function use_editor($elementid, array $options=null, $fpoptions=null) {
-        global $PAGE;
-        // Note: use full moodle_url instance to prevent standard JS loader.
+        global $PAGE, $CFG;
+        // Note: use full moodle_url instance to prevent standard JS loader, make sure we are using https on profile page if required.
         if (debugging('', DEBUG_DEVELOPER)) {
-            $PAGE->requires->js(new moodle_url('/lib/editor/tinymce/tiny_mce/'.$this->version.'/tiny_mce_src.js'));
+            $PAGE->requires->js(new moodle_url($CFG->httpswwwroot.'/lib/editor/tinymce/tiny_mce/'.$this->version.'/tiny_mce_src.js'));
         } else {
-            $PAGE->requires->js(new moodle_url('/lib/editor/tinymce/tiny_mce/'.$this->version.'/tiny_mce.js'));
+            $PAGE->requires->js(new moodle_url($CFG->httpswwwroot.'/lib/editor/tinymce/tiny_mce/'.$this->version.'/tiny_mce.js'));
         }
         $PAGE->requires->js_init_call('M.editor_tinymce.init_editor', array($elementid, $this->get_init_params($elementid, $options)), true);
         if ($fpoptions) {
@@ -110,7 +113,6 @@ class tinymce_texteditor extends texteditor {
 
     protected function get_init_params($elementid, array $options=null) {
         global $CFG, $PAGE, $OUTPUT;
-        require_once($CFG->dirroot . '/lib/editor/tinymce/classes/plugin.php');
 
         //TODO: we need to implement user preferences that affect the editor setup too
 
@@ -152,7 +154,7 @@ class tinymce_texteditor extends texteditor {
             'apply_source_formatting' => true,
             'remove_script_host' => false,
             'entity_encoding' => "raw",
-            'plugins' => 'safari,table,style,layer,advhr,advlink,emotions,inlinepopups,' .
+            'plugins' => 'lists,table,style,layer,advhr,advlink,emotions,inlinepopups,' .
                 'searchreplace,paste,directionality,fullscreen,nonbreaking,contextmenu,' .
                 'insertdatetime,save,iespell,preview,print,noneditable,visualchars,' .
                 'xhtmlxtras,template,pagebreak',
@@ -172,8 +174,7 @@ class tinymce_texteditor extends texteditor {
         );
 
         // Should we override the default toolbar layout unconditionally?
-        $customtoolbar = self::parse_toolbar_setting($config->customtoolbar);
-        if ($customtoolbar) {
+        if (!empty($config->customtoolbar) and $customtoolbar = self::parse_toolbar_setting($config->customtoolbar)) {
             $i = 1;
             foreach ($customtoolbar as $line) {
                 $params['theme_advanced_buttons'.$i] = $line;
@@ -182,6 +183,16 @@ class tinymce_texteditor extends texteditor {
         } else {
             // At least one line is required.
             $params['theme_advanced_buttons1'] = '';
+        }
+
+        if (!empty($config->customconfig)) {
+            $config->customconfig = trim($config->customconfig);
+            $decoded = json_decode($config->customconfig, true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $k=>$v) {
+                    $params[$k] = $v;
+                }
+            }
         }
 
         if (!empty($options['legacy']) or !empty($options['noclean']) or !empty($options['trusted'])) {
@@ -250,7 +261,6 @@ class tinymce_texteditor extends texteditor {
      */
     public function get_plugin($plugin) {
         global $CFG;
-        require_once($CFG->dirroot . '/lib/editor/tinymce/classes/plugin.php');
         return editor_tinymce_plugin::get($plugin);
     }
 
@@ -264,4 +274,5 @@ class tinymce_texteditor extends texteditor {
         global $CFG;
         return new moodle_url("$CFG->httpswwwroot/lib/editor/tinymce/tiny_mce/$this->version/");
     }
+
 }

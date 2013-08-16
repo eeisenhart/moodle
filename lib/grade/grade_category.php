@@ -886,7 +886,9 @@ class grade_category extends grade_object {
                 $droppedsomething = false;
 
                 $grade_keys = array_keys($grade_values);
-                if (count($grade_keys) === 0) {
+                $gradekeycount = count($grade_keys);
+
+                if ($gradekeycount === 0) {
                     //We've dropped all grade items
                     break;
                 }
@@ -912,7 +914,7 @@ class grade_category extends grade_object {
                 // Now iterate over the remaining grade items
                 // We're looking for other grade items with the same grade value but a higher grademax
                 $i = 1;
-                while ($originalindex+$i < count($grade_keys)) {
+                while ($originalindex + $i < $gradekeycount) {
 
                     $possibleitemid = $grade_keys[$originalindex+$i];
                     $i++;
@@ -1152,13 +1154,17 @@ class grade_category extends grade_object {
 
             } else {
                 $categoryid = $item->categoryid;
+                if (empty($categoryid)) {
+                    debugging('Found a grade item that isnt in a category');
+                }
             }
 
             // prevent problems with duplicate sortorders in db
             $sortorder = $item->sortorder;
 
-            while (array_key_exists($sortorder, $cats[$categoryid]->children)) {
-                //debugging("$sortorder exists in item loop");
+            while (array_key_exists($categoryid, $cats)
+                && array_key_exists($sortorder, $cats[$categoryid]->children)) {
+
                 $sortorder++;
             }
 
@@ -1610,7 +1616,9 @@ class grade_category extends grade_object {
             if ($children = grade_item::fetch_all(array('categoryid'=>$this->id))) {
 
                 foreach ($children as $child) {
-                    $child->set_hidden($hidden, $cascade);
+                    if ($child->can_control_visibility()) {
+                        $child->set_hidden($hidden, $cascade);
+                    }
                 }
             }
 

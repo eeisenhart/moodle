@@ -55,6 +55,21 @@ define('QUIZ_SHOW_TIME_BEFORE_DEADLINE', '3600');
  */
 define('QUIZ_MIN_TIME_TO_CONTINUE', '2');
 
+/**
+ * @var int We show no image when user selects No image from dropdown menu in quiz settings.
+ */
+define('QUIZ_SHOWIMAGE_NONE', 0);
+
+/**
+ * @var int We show small image when user selects small image from dropdown menu in quiz settings.
+ */
+define('QUIZ_SHOWIMAGE_SMALL', 1);
+
+/**
+ * @var int We show Large image when user selects Large image from dropdown menu in quiz settings.
+ */
+define('QUIZ_SHOWIMAGE_LARGE', 2);
+
 
 // Functions related to attempts ///////////////////////////////////////////////
 
@@ -121,6 +136,165 @@ function quiz_create_attempt(quiz $quizobj, $attemptnumber, $lastattempt, $timen
     }
 
     return $attempt;
+}
+/**
+ * Start a normal, new, quiz attempt.
+ *
+ * @param quiz      $quizobj            the quiz object to start an attempt for.
+ * @param question_usage_by_activity $quba
+ * @param object    $attempt
+ * @param integer   $attemptnumber      starting from 1
+ * @param integer   $timenow            the attempt start time
+ * @param array     $questionids        slot number => question id. Used for random questions, to force the choice
+ *                                        of a particular actual question. Intended for testing purposes only.
+ * @param array     $forcedvariantsbyslot slot number => variant. Used for questions with variants,
+ *                                          to force the choice of a particular variant. Intended for testing
+ *                                          purposes only.
+ * @throws moodle_exception
+ * @return object   modified attempt object
+ */
+function quiz_start_new_attempt($quizobj, $quba, $attempt, $attemptnumber, $timenow,
+                                $questionids = array(), $forcedvariantsbyslot = array()) {
+    // Fully load all the questions in this quiz.
+    $quizobj->preload_questions();
+    $quizobj->load_questions();
+
+    // Add them all to the $quba.
+    $idstoslots = array();
+    $questionsinuse = array_keys($quizobj->get_questions());
+    foreach ($quizobj->get_questions() as $i => $questiondata) {
+        if ($questiondata->qtype != 'random') {
+            if (!$quizobj->get_quiz()->shuffleanswers) {
+                $questiondata->options->shuffleanswers = false;
+            }
+            $question = question_bank::make_question($questiondata);
+
+        } else {
+            if (!isset($questionids[$quba->next_slot_number()])) {
+                $forcequestionid = null;
+            } else {
+                $forcequestionid = $questionids[$quba->next_slot_number()];
+            }
+
+            $question = question_bank::get_qtype('random')->choose_other_question(
+                $questiondata, $questionsinuse, $quizobj->get_quiz()->shuffleanswers, $forcequestionid);
+            if (is_null($question)) {
+                throw new moodle_exception('notenoughrandomquestions', 'quiz',
+                                           $quizobj->view_url(), $questiondata);
+            }
+        }
+
+        $idstoslots[$i] = $quba->add_question($question, $questiondata->maxmark);
+        $questionsinuse[] = $question->id;
+    }
+
+    // Start all the questions.
+    if ($attempt->preview) {
+        $variantoffset = rand(1, 100);
+    } else {
+        $variantoffset = $attemptnumber;
+    }
+    $variantstrategy = new question_variant_pseudorandom_no_repeats_strategy($variantoffset);
+
+    if (!empty($forcedvariantsbyslot)) {
+        $forcedvariantsbyseed = question_variant_forced_choices_selection_strategy::prepare_forced_choices_array(
+            $forcedvariantsbyslot, $quba);
+        $variantstrategy = new question_variant_forced_choices_selection_strategy(
+            $forcedvariantsbyseed, $variantstrategy);
+    }
+
+    $quba->start_all_questions($variantstrategy, $timenow);
+
+    // Update attempt layout.
+    $newlayout = array();
+    foreach (explode(',', $attempt->layout) as $qid) {
+        if ($qid != 0) {
+            $newlayout[] = $idstoslots[$qid];
+        } else {
+            $newlayout[] = 0;
+        }
+    }
+    $attempt->layout = implode(',', $newlayout);
+    return $attempt;
+}
+
+/**
+ * Start a subsequent new attempt, in each attempt builds on last mode.
+ *
+ * @param question_usage_by_activity    $quba         this question usage
+ * @param object                        $attempt      this attempt
+ * @param object                        $lastattempt  last attempt
+ * @return object                       modified attempt object
+ *
+ */
+function quiz_start_attempt_built_on_last($quba, $attempt, $lastattempt) {
+    $oldquba = question_engine::load_questions_usage_by_activity($lastattempt->uniqueid);
+
+    $oldnumberstonew = array();
+    foreach ($oldquba->get_attempt_iterator() as $oldslot => $oldqa) {
+        $newslot = $quba->add_question($oldqa->get_question(), $oldqa->get_max_mark());
+
+        $quba->start_question_based_on($newslot, $oldqa);
+
+        $oldnumberstonew[$oldslot] = $newslot;
+    }
+
+    // Update attempt layout.
+    $newlayout = array();
+    foreach (explode(',', $lastattempt->layout) as $oldslot) {
+        if ($oldslot != 0) {
+            $newlayout[] = $oldnumberstonew[$oldslot];
+        } else {
+            $newlayout[] = 0;
+        }
+    }
+    $attempt->layout = implode(',', $newlayout);
+    return $attempt;
+}
+
+/**
+ * The save started question usage and quiz attempt in db and log the started attempt.
+ *
+ * @param quiz                       $quizobj
+ * @param question_usage_by_activity $quba
+ * @param object                     $attempt
+ * @return object                    attempt object with uniqueid and id set.
+ */
+function quiz_attempt_save_started($quizobj, $quba, $attempt) {
+    global $DB;
+    // Save the attempt in the database.
+    question_engine::save_questions_usage_by_activity($quba);
+    $attempt->uniqueid = $quba->get_id();
+    $attempt->id = $DB->insert_record('quiz_attempts', $attempt);
+    // Log the new attempt.
+    if ($attempt->preview) {
+        add_to_log($quizobj->get_courseid(), 'quiz', 'preview', 'view.php?id='.$quizobj->get_cmid(),
+                   $quizobj->get_quizid(), $quizobj->get_cmid());
+    } else {
+        add_to_log($quizobj->get_courseid(), 'quiz', 'attempt', 'review.php?attempt='.$attempt->id,
+                   $quizobj->get_quizid(), $quizobj->get_cmid());
+    }
+    return $attempt;
+}
+
+/**
+ * Fire an event to tell the rest of Moodle a quiz attempt has started.
+ *
+ * @param object $attempt
+ * @param quiz   $quizobj
+ */
+function quiz_fire_attempt_started_event($attempt, $quizobj) {
+    // Trigger event.
+    $eventdata = new stdClass();
+    $eventdata->component = 'mod_quiz';
+    $eventdata->attemptid = $attempt->id;
+    $eventdata->timestart = $attempt->timestart;
+    $eventdata->timestamp = $attempt->timestart;
+    $eventdata->userid = $attempt->userid;
+    $eventdata->quizid = $quizobj->get_quizid();
+    $eventdata->cmid = $quizobj->get_cmid();
+    $eventdata->courseid = $quizobj->get_courseid();
+    events_trigger('quiz_attempt_started', $eventdata);
 }
 
 /**
@@ -783,34 +957,48 @@ function quiz_update_open_attempts(array $conditions) {
     }
 
     $params = array();
-    $coursecond = '';
-    $usercond = '';
-    $quizcond = '';
-    $groupcond = '';
+    $wheres = array("quiza.state IN ('inprogress', 'overdue')");
+    $iwheres = array("iquiza.state IN ('inprogress', 'overdue')");
 
     if (isset($conditions['courseid'])) {
         list ($incond, $inparams) = $DB->get_in_or_equal($conditions['courseid'], SQL_PARAMS_NAMED, 'cid');
         $params = array_merge($params, $inparams);
-        $coursecond = "AND quiza.quiz IN (SELECT q.id FROM {quiz} q WHERE q.course $incond)";
+        $wheres[] = "quiza.quiz IN (SELECT q.id FROM {quiz} q WHERE q.course $incond)";
+        list ($incond, $inparams) = $DB->get_in_or_equal($conditions['courseid'], SQL_PARAMS_NAMED, 'icid');
+        $params = array_merge($params, $inparams);
+        $iwheres[] = "iquiza.quiz IN (SELECT q.id FROM {quiz} q WHERE q.course $incond)";
     }
+
     if (isset($conditions['userid'])) {
         list ($incond, $inparams) = $DB->get_in_or_equal($conditions['userid'], SQL_PARAMS_NAMED, 'uid');
         $params = array_merge($params, $inparams);
-        $usercond = "AND quiza.userid $incond";
+        $wheres[] = "quiza.userid $incond";
+        list ($incond, $inparams) = $DB->get_in_or_equal($conditions['userid'], SQL_PARAMS_NAMED, 'iuid');
+        $params = array_merge($params, $inparams);
+        $iwheres[] = "iquiza.userid $incond";
     }
+
     if (isset($conditions['quizid'])) {
         list ($incond, $inparams) = $DB->get_in_or_equal($conditions['quizid'], SQL_PARAMS_NAMED, 'qid');
         $params = array_merge($params, $inparams);
-        $quizcond = "AND quiza.quiz $incond";
+        $wheres[] = "quiza.quiz $incond";
+        list ($incond, $inparams) = $DB->get_in_or_equal($conditions['quizid'], SQL_PARAMS_NAMED, 'iqid');
+        $params = array_merge($params, $inparams);
+        $iwheres[] = "iquiza.quiz $incond";
     }
+
     if (isset($conditions['groupid'])) {
         list ($incond, $inparams) = $DB->get_in_or_equal($conditions['groupid'], SQL_PARAMS_NAMED, 'gid');
         $params = array_merge($params, $inparams);
-        $groupcond = "AND quiza.quiz IN (SELECT qo.quiz FROM {quiz_overrides} qo WHERE qo.groupid $incond)";
+        $wheres[] = "quiza.quiz IN (SELECT qo.quiz FROM {quiz_overrides} qo WHERE qo.groupid $incond)";
+        list ($incond, $inparams) = $DB->get_in_or_equal($conditions['groupid'], SQL_PARAMS_NAMED, 'igid');
+        $params = array_merge($params, $inparams);
+        $iwheres[] = "iquiza.quiz IN (SELECT qo.quiz FROM {quiz_overrides} qo WHERE qo.groupid $incond)";
     }
 
     // SQL to compute timeclose and timelimit for each attempt:
-    $quizausersql = quiz_get_attempt_usertime_sql();
+    $quizausersql = quiz_get_attempt_usertime_sql(
+            implode("\n                AND ", $iwheres));
 
     // SQL to compute the new timecheckstate
     $timecheckstatesql = "
@@ -822,11 +1010,7 @@ function quiz_update_open_attempts(array $conditions) {
           CASE WHEN quiza.state = 'overdue' THEN quiz.graceperiod ELSE 0 END";
 
     // SQL to select which attempts to process
-    $attemptselect = " quiza.state IN ('inprogress', 'overdue')
-                       $coursecond
-                       $usercond
-                       $quizcond
-                       $groupcond";
+    $attemptselect = implode("\n                         AND ", $wheres);
 
    /*
     * Each database handles updates with inner joins differently:
@@ -876,9 +1060,14 @@ function quiz_update_open_attempts(array $conditions) {
 /**
  * Returns SQL to compute timeclose and timelimit for every attempt, taking into account user and group overrides.
  *
- * @return string         SQL select with columns attempt.id, usertimeclose, usertimelimit
+ * @param string $redundantwhereclauses extra where clauses to add to the subquery
+ *      for performance. These can use the table alias iquiza for the quiz attempts table.
+ * @return string SQL select with columns attempt.id, usertimeclose, usertimelimit.
  */
-function quiz_get_attempt_usertime_sql() {
+function quiz_get_attempt_usertime_sql($redundantwhereclauses = '') {
+    if ($redundantwhereclauses) {
+        $redundantwhereclauses = 'WHERE ' . $redundantwhereclauses;
+    }
     // The multiple qgo JOINS are necessary because we want timeclose/timelimit = 0 (unlimited) to supercede
     // any other group override
     $quizausersql = "
@@ -894,6 +1083,7 @@ function quiz_get_attempt_usertime_sql() {
       LEFT JOIN {quiz_overrides} qgo2 ON qgo2.quiz = iquiza.quiz AND qgo2.groupid = gm.groupid AND qgo2.timeclose > 0
       LEFT JOIN {quiz_overrides} qgo3 ON qgo3.quiz = iquiza.quiz AND qgo3.groupid = gm.groupid AND qgo3.timelimit = 0
       LEFT JOIN {quiz_overrides} qgo4 ON qgo4.quiz = iquiza.quiz AND qgo4.groupid = gm.groupid AND qgo4.timelimit > 0
+          $redundantwhereclauses
        GROUP BY iquiza.id, iquiz.id, iquiz.timeclose, iquiz.timelimit";
     return $quizausersql;
 }
@@ -1624,6 +1814,9 @@ function quiz_groups_group_deleted_handler($event) {
              WHERE quiz.course = :courseid AND grp.id IS NULL";
     $params = array('courseid'=>$event->courseid);
     $records = $DB->get_records_sql_menu($sql, $params);
+    if (!$records) {
+        return; // Nothing to do.
+    }
     $DB->delete_records_list('quiz_overrides', 'id', array_keys($records));
     quiz_update_open_attempts(array('quizid'=>array_unique(array_values($records))));
 }

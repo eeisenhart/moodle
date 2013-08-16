@@ -85,24 +85,7 @@ abstract class question_behaviour {
      *
      * @param question_definition $question the question.
      */
-    public function is_compatible_question(question_definition $question) {
-        $requiredclass = $this->required_question_definition_type();
-        return $this->question instanceof $requiredclass;
-    }
-
-    /**
-     * Most behaviours can only work with {@link question_definition}s
-     * of a particular subtype, or that implement a particular interface.
-     * This method lets the behaviour document that. The type of
-     * question passed to the constructor is then checked against this type.
-     *
-     * @deprecated since 2.2. Please use/override {@link is_compatible_question()} instead.
-     *
-     * @return string class/interface name.
-     */
-    protected function required_question_definition_type() {
-        return 'question_definition';
-    }
+    public abstract function is_compatible_question(question_definition $question);
 
     /**
      * @return string the name of this behaviour. For example the name of
@@ -347,8 +330,8 @@ abstract class question_behaviour {
      * Initialise the first step in a question attempt when a new
      * {@link question_attempt} is being started.
      *
-     * This method must call $this->question->start_attempt($step), and may
-     * perform additional processing if the model requries it.
+     * This method must call $this->question->start_attempt($step, $variant), and may
+     * perform additional processing if the behaviour requries it.
      *
      * @param question_attempt_step $step the first step of the
      *      question_attempt being started.
@@ -356,6 +339,23 @@ abstract class question_behaviour {
      */
     public function init_first_step(question_attempt_step $step, $variant) {
         $this->question->start_attempt($step, $variant);
+        $step->set_state(question_state::$todo);
+    }
+
+    /**
+     * When an attempt is started based on a previous attempt (see
+     * {@link question_attempt::start_based_on}) this method is called to setup
+     * the new attempt.
+     *
+     * This method must call $this->question->apply_attempt_state($step), and may
+     * perform additional processing if the behaviour requries it.
+     *
+     * @param question_attempt_step The first step of the {@link question_attempt}
+     *      being loaded.
+     */
+    public function apply_attempt_state(question_attempt_step $step) {
+        $this->question->apply_attempt_state($step);
+        $step->set_state(question_state::$todo);
     }
 
     /**
@@ -434,6 +434,19 @@ abstract class question_behaviour {
      * @return bool either {@link question_attempt::KEEP} or {@link question_attempt::DISCARD}
      */
     public abstract function process_action(question_attempt_pending_step $pendingstep);
+
+    /**
+     * Auto-saved data. By default this does nothing. interesting processing is
+     * done in {@link question_behaviour_with_save}.
+     *
+     * @param question_attempt_pending_step $pendingstep a partially initialised step
+     *      containing all the information about the action that is being peformed. This
+     *      information can be accessed using {@link question_attempt_step::get_behaviour_var()}.
+     * @return bool either {@link question_attempt::KEEP} or {@link question_attempt::DISCARD}
+     */
+    public function process_autosave(question_attempt_pending_step $pendingstep) {
+        return question_attempt::DISCARD;
+    }
 
     /**
      * Implementation of processing a manual comment/grade action that should
@@ -546,6 +559,13 @@ abstract class question_behaviour_with_save extends question_behaviour {
         return 'question_manually_gradable';
     }
 
+    public function apply_attempt_state(question_attempt_step $step) {
+        parent::apply_attempt_state($step);
+        if ($this->question->is_complete_response($step->get_qt_data())) {
+            $step->set_state(question_state::$complete);
+        }
+    }
+
     /**
      * Work out whether the response in $pendingstep are significantly different
      * from the last set of responses we have stored.
@@ -568,6 +588,29 @@ abstract class question_behaviour_with_save extends question_behaviour {
      */
     protected function is_complete_response(question_attempt_step $pendingstep) {
         return $this->question->is_complete_response($pendingstep->get_qt_data());
+    }
+
+    public function process_autosave(question_attempt_pending_step $pendingstep) {
+        // If already finished. Nothing to do.
+        if ($this->qa->get_state()->is_finished()) {
+            return question_attempt::DISCARD;
+        }
+
+        // If the new data is the same as we already have, then we don't need it.
+        if ($this->is_same_response($pendingstep)) {
+            return question_attempt::DISCARD;
+        }
+
+        // Repeat that test discarding any existing autosaved data.
+        if ($this->qa->has_autosaved_step()) {
+            $this->qa->discard_autosaved_step();
+            if ($this->is_same_response($pendingstep)) {
+                return question_attempt::DISCARD;
+            }
+        }
+
+        // OK, we need to save.
+        return $this->process_save($pendingstep);
     }
 
     /**
