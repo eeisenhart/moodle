@@ -31,8 +31,7 @@ class course_completed extends base {
     protected function init() {
         $this->data['objecttable'] = 'course_completions';
         $this->data['crud'] = 'u';
-        // TODO: MDL-37658 set level.
-        $this->data['level'] = 50;
+        $this->data['level'] = self::LEVEL_PARTICIPATING;
     }
 
     /**
@@ -41,7 +40,7 @@ class course_completed extends base {
      * @return string
      */
     public static function get_name() {
-        return new get_string('eventcoursecompleted', 'core_completion');
+        return get_string('eventcoursecompleted', 'core_completion');
     }
 
     /**

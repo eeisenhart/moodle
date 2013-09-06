@@ -263,6 +263,7 @@ a.skip:active {position: static;display: block;}
 .mform .fitem fieldset.felement {margin-left:15%;padding-left:1%;margin-bottom:0}
 .mform .error,
 .mform .required {color:#A00;}
+.mform span.error {display: inline-block;padding: 4px;margin-bottom: 4px;background-color: #F2DEDE;border: 1px solid #EED3D7;}
 .mform .required .fgroup span label {color:#000;}
 .mform .fdescription.required {color:#A00;text-align:right;}
 .dir-rtl .mform .fdescription.required {text-align:left;}
@@ -348,6 +349,7 @@ input#id_externalurl {direction:ltr;}
 .groupmanagementtable #potentialcell {width: 42%;}
 .groupmanagementtable #buttonscell {width: 16%;}
 .groupmanagementtable #buttonscell input {width: 80%;}
+.groupmanagementtable #buttonscell p.arrow_button input {width: auto;min-width: 80%;margin: 0 auto;}
 .groupmanagementtable #removeselect_wrapper,
 .groupmanagementtable #addselect_wrapper {width: 100%;}
 .groupmanagementtable #removeselect_wrapper label,
@@ -540,6 +542,21 @@ body.tag .managelink {padding: 5px;}
 .path-backup .fitemtitle .iconlarge.icon-post { padding-left: 6px; }
 .path-backup.dir-rtl .fitemtitle .iconlarge.icon-post { padding-right: 6px; padding-right: 0; }
 .path-backup .fitem .smallicon { vertical-align: text-bottom; }
+.path-backup .wibbler { width: 500px; margin: 0 auto 10px; border-bottom: 1px solid black; border-right: 1px solid black; border-left: 1px solid black; position: relative; min-height: 4px;}
+.path-backup .wibbler .wibble { position: absolute; left: 0; right: 0; top: 0; height: 4px; }
+.path-backup .wibbler .state0 { background: #eee; }
+.path-backup .wibbler .state1 { background: #ddd; }
+.path-backup .wibbler .state2 { background: #ccc; }
+.path-backup .wibbler .state3 { background: #bbb; }
+.path-backup .wibbler .state4 { background: #aaa; }
+.path-backup .wibbler .state5 { background: #999; }
+.path-backup .wibbler .state6 { background: #888; }
+.path-backup .wibbler .state7 { background: #777; }
+.path-backup .wibbler .state8 { background: #666; }
+.path-backup .wibbler .state9 { background: #555; }
+.path-backup .wibbler .state10 { background: #444; }
+.path-backup .wibbler .state11 { background: #333; }
+.path-backup .wibbler .state12 { background: #222; }
 
 /**
  * Web Service
@@ -893,6 +910,10 @@ sup {vertical-align: super;}
 /* Moodle Dialogue Settings (moodle-core-dialogue)  */
 .moodle-dialogue-base .moodle-dialogue-lightbox {
     background-color:#AAA;
+}
+
+.moodle-dialogue-base .moodle-dialogue {
+    outline: #000 dotted 0;
 }
 
 .moodle-dialogue-base .hidden,
@@ -1470,3 +1491,6 @@ div.badge .expireimage { width: 100px; height: 100px; left: 20px; top: 0px; }
 .dir-rtl .menu.align-tr-tr {right: auto;left: 0;}
 .dir-rtl .menu.align-bl-tr {right: 100%;left: auto;}
 .dir-rtl .menu.align-br-tr {right: auto;left: 0;}
+
+ul.dragdrop-keyboard-drag li { list-style-type: none; }
+.block-control-actions .moodle-core-dragdrop-draghandle img { width: 12px; height: 12px; }
