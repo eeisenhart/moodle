@@ -168,7 +168,7 @@ function cron() {
         $this->log_line('File not found: '.$filename);
     }
 
-    if (!empty($mailadmins)) {
+    if (!empty($mailadmins) && $fileisnew) {
         $msg = "An IMS enrolment has been carried out within Moodle.\nTime taken: $timeelapsed seconds.\n\n";
         if(!empty($logtolocation)){
             if($this->logfp){
@@ -260,7 +260,16 @@ function process_group_tag($tagcontents) {
     // Get configs
     $truncatecoursecodes    = $this->get_config('truncatecoursecodes');
     $createnewcourses       = $this->get_config('createnewcourses');
+    $updatecourses          = $this->get_config('updatecourses');
     $createnewcategories    = $this->get_config('createnewcategories');
+    $categoryseparator      = trim($this->get_config('categoryseparator'));
+    $courseattr_shortname   = $this->get_config('imscoursemapshortname');
+    $courseattr_fullname    = $this->get_config('imscoursemapfullname');
+
+    // Ensure a default is set for the category separator
+    if (empty($categoryseparator)) {
+        $categoryseparator = '|';
+    }
 
     // Process tag contents
     $group = new stdClass();
@@ -341,25 +350,52 @@ function process_group_tag($tagcontents) {
 
                     // Handle course categorisation (taken from the group.org.orgunit field if present)
                     if (strlen($group->category)>0) {
-                        // If the category is defined and exists in Moodle, we want to store it in that one
-                        if ($catid = $DB->get_field('course_categories', 'id', array('name'=>$group->category))) {
-                            $course->category = $catid;
-                        } else if ($createnewcategories) {
-                            // Else if we're allowed to create new categories, let's create this one
-                            $newcat = new stdClass();
-                            $newcat->name = $group->category;
-                            $newcat->visible = 0;
-                            $catid = $DB->insert_record('course_categories', $newcat);
-                            $course->category = $catid;
-                            $this->log_line("Created new (hidden) category, #$catid: $newcat->name");
-                        } else {
-                            // If not found and not allowed to create, stick with default
-                            $this->log_line('Category '.$group->category.' not found in Moodle database, so using default category instead.');
-                            $course->category = 1;
+                        $sep = '{\\'.$categoryseparator.'}';
+                        $matches = preg_split($sep, $group->category, -1, PREG_SPLIT_NO_EMPTY);
+
+                        // Categories can be nested, for example:
+                        // "Fall 2013|Biology" is the "Biology" category
+                        // nested under the "Fall 2013" category.
+                        // Iterate through each category and create it if
+                        // necessary.
+
+                        $catid = 0;
+                        $full_nested_catname = '';
+                        foreach ($matches as $catname) {
+                            $catname = trim($catname);
+                            if (strlen($full_nested_catname)) {
+                                $full_nested_catname .= ' / ';
+                            }
+                            $full_nested_catname .= $catname;
+                            $parentid = $catid;
+                            if ($catid = $DB->get_field('course_categories', 'id', array('name'=>$catname, 'parent'=>$parentid))) {
+                                $course->category = $catid;
+                                continue; // This category already exists.
+                            }
+                            if ($createnewcategories) {
+                                // Create this category.
+                                $newcat = new stdClass();
+                                $newcat->name = $catname;
+                                $newcat->visible = 0;
+                                $newcat->parent = $parentid;
+                                $catid = $DB->insert_record('course_categories', $newcat);
+                                $this->log_line("Created new (hidden) category '$full_nested_catname'");
+                                $course->category = $catid;
+                            } else {
+                                // We encountered a category that doesn't
+                                // exist and we can't create it; set the
+                                // default category for this course.
+                                $course->category = 1; // Miscellaneous.
+                                $msg = 'Cannot create requested category '.$group->category.'; Setting to Miscellaneous.';
+                                $this->log_line($msg);
+                                break;
+                            }
                         }
                     } else {
-                        $course->category = 1;
+                        // If no category was specified, set to Misc.
+                        $course->category = 1; // Miscellaneous.
                     }
+
                     $course->timecreated = time();
                     $course->startdate = time();
                     // Choose a sort order that puts us at the start of the list!
@@ -381,9 +417,39 @@ function process_group_tag($tagcontents) {
 
                     $this->log_line("Created course $coursecode in Moodle (Moodle ID is $course->id)");
                 }
+            } else if ($recstatus==2 &&
+                    ($courseid = $DB->get_field('course', 'id', array('idnumber'=>$coursecode)))) {
+                if ($updatecourses) {
+                    // Update course. Allowed fields to be updated are:
+                    // Short Name, and Full Name.
+                    $has_updates = 0;
+                    $dbcourse = $DB->get_record('course', array('id' => $courseid));
+                    if (!empty($group->short)) {
+                        if ($group->short != $dbcourse->shortname) {
+                            $dbcourse->shortname = $group->short;
+                            $has_updates = 1;
+                        }
+                    }
+                    if (!empty($group->full)) {
+                        if ($group->full != $dbcourse->fullname) {
+                            $dbcourse->fullname = $group->full;
+                            $has_updates = 1;
+                        }
+                    }
+                    if ($has_updates) {
+                        $DB->update_record('course', $dbcourse);
+                        add_to_log(SITEID, "course", "update", "view.php?id=$courseid","ID $courseid");
+                        $this->log_line("Updated course $coursecode in Moodle (Moodle ID is $courseid)");
+                    }
+                } else {
+                    // Update courses option is not enabled. Ignore.
+                    $this->log_line("Ignoring update to course $coursecode");
+                }
             } else if ($recstatus==3 && ($courseid = $DB->get_field('course', 'id', array('idnumber'=>$coursecode)))) {
                 // If course does exist, but recstatus==3 (delete), then set the course as hidden
                 $DB->set_field('course', 'visible', '0', array('id'=>$courseid));
+                add_to_log(SITEID, "course", "delete", "view.php?id=$courseid", "$group->description (ID $courseid)");
+                $this->log_line("Deleted (set to not visible) course $coursecode in Moodle (Moodle ID is $courseid)");
             }
         } // End of foreach(coursecode)
     }
@@ -402,6 +468,7 @@ function process_person_tag($tagcontents){
     $fixcasepersonalnames   = $this->get_config('fixcasepersonalnames');
     $imsdeleteusers         = $this->get_config('imsdeleteusers');
     $createnewusers         = $this->get_config('createnewusers');
+    $imsupdateusers         = $this->get_config('imsupdateusers');
 
     $person = new stdClass();
     if(preg_match('{<sourcedid>.*?<id>(.+?)</id>.*?</sourcedid>}is', $tagcontents, $matches)){
@@ -413,8 +480,11 @@ function process_person_tag($tagcontents){
     if(preg_match('{<name>.*?<n>.*?<family>(.+?)</family>.*?</n>.*?</name>}is', $tagcontents, $matches)){
         $person->lastname = trim($matches[1]);
     }
-    if(preg_match('{<userid>(.*?)</userid>}is', $tagcontents, $matches)){
+    if(preg_match('{<userid.*?>(.*?)</userid>}is', $tagcontents, $matches)){
         $person->username = trim($matches[1]);
+    }
+    if (preg_match('{<userid\s+authenticationtype\s*=\s*"*(.+?)"*>.*?</userid>}is', $tagcontents, $matches)) {
+        $person->auth = trim($matches[1]);
     }
     if($imssourcedidfallback && trim($person->username)==''){
       // This is the point where we can fall back to useing the "sourcedid" if "userid" is not supplied
@@ -468,7 +538,20 @@ function process_person_tag($tagcontents){
             $this->log_line("Ignoring deletion request for user '$person->username' (ID number $person->idnumber).");
         }
 
-    }else{ // Add or update record
+    } else if ($recstatus == 2) { // Update user
+        if ($imsupdateusers) {
+            if ($id = $DB->get_field('user', 'id', array('idnumber'=>$person->idnumber))) {
+                $person->id = $id;
+                $DB->update_record('user', $person);
+                $this->log_line("Updated user $person->username");
+            } else {
+                $this->log_line("Ignoring update request for non-existent user $person->username");
+            }
+        } else {
+            $this->log_line("Ignoring update request for user $person->username");
+        }
+
+    } else { // Add record
 
 
         // If the user exists (matching sourcedid) then we don't need to do anything.
@@ -483,9 +566,11 @@ function process_person_tag($tagcontents){
 
             // If they don't exist and they have a defined username, and $createnewusers == true, we create them.
             $person->lang = $CFG->lang;
-            $auth = explode(',', $CFG->auth); //TODO: this needs more work due tu multiauth changes, use first auth for now
-            $auth = reset($auth);
-            $person->auth = $auth;
+            if (empty($person->auth)) {
+                $auth = explode(',', $CFG->auth); //TODO: this needs more work due tu multiauth changes, use first auth for now
+                $auth = reset($auth);
+                $person->auth = $auth;
+            }
             $person->confirmed = 1;
             $person->timemodified = time();
             $person->mnethostid = $CFG->mnet_localhost_id;
