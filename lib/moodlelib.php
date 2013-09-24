@@ -1220,6 +1220,8 @@ function fix_utf8($value) {
             // Shortcut.
             return $value;
         }
+        // No null bytes expected in our data, so let's remove it.
+        $value = str_replace("\0", '', $value);
 
         // Lower error reporting because glibc throws bogus notices.
         $olderror = error_reporting();
@@ -1587,6 +1589,13 @@ function purge_all_caches() {
     theme_reset_all_caches();
     get_string_manager()->reset_caches();
     core_text::reset_caches();
+
+    // Bump up cacherev field for all courses.
+    try {
+        increment_revision_number('course', 'cacherev', '');
+    } catch (moodle_exception $e) {
+        // Ignore exception since this function is also called before upgrade script when field course.cacherev does not exist yet.
+    }
 
     cache_helper::purge_all();
 
@@ -2130,24 +2139,14 @@ function format_time($totalsecs, $str = null) {
 }
 
 /**
- * Returns a formatted string that represents a date in user time
- *
- * Returns a formatted string that represents a date in user time
- * <b>WARNING: note that the format is for strftime(), not date().</b>
- * Because of a bug in most Windows time libraries, we can't use
- * the nicer %e, so we have to use %d which has leading zeroes.
- * A lot of the fuss in the function is just getting rid of these leading
- * zeroes as efficiently as possible.
- *
- * If parameter fixday = true (default), then take off leading
- * zero from %d, else maintain it.
+ * Returns a formatted string that represents a date in user time.
  *
  * @package core
  * @category time
  * @param int $date the timestamp in UTC, as obtained from the database.
  * @param string $format strftime format. You should probably get this using
  *        get_string('strftime...', 'langconfig');
- * @param int|float|string  $timezone by default, uses the user's time zone. if numeric and
+ * @param int|float|string $timezone by default, uses the user's time zone. if numeric and
  *        not 99 then daylight saving will not be added.
  *        {@link http://docs.moodle.org/dev/Time_API#Timezone}
  * @param bool $fixday If true (default) then the leading zero from %d is removed.
@@ -2156,71 +2155,8 @@ function format_time($totalsecs, $str = null) {
  * @return string the formatted date/time.
  */
 function userdate($date, $format = '', $timezone = 99, $fixday = true, $fixhour = true) {
-
-    global $CFG;
-
-    if (empty($format)) {
-        $format = get_string('strftimedaydatetime', 'langconfig');
-    }
-
-    if (!empty($CFG->nofixday)) {
-        // Config.php can force %d not to be fixed.
-        $fixday = false;
-    } else if ($fixday) {
-        $formatnoday = str_replace('%d', 'DD', $format);
-        $fixday = ($formatnoday != $format);
-        $format = $formatnoday;
-    }
-
-    // Note: This logic about fixing 12-hour time to remove unnecessary leading
-    // zero is required because on Windows, PHP strftime function does not
-    // support the correct 'hour without leading zero' parameter (%l).
-    if (!empty($CFG->nofixhour)) {
-        // Config.php can force %I not to be fixed.
-        $fixhour = false;
-    } else if ($fixhour) {
-        $formatnohour = str_replace('%I', 'HH', $format);
-        $fixhour = ($formatnohour != $format);
-        $format = $formatnohour;
-    }
-
-    // Add daylight saving offset for string timezones only, as we can't get dst for
-    // float values. if timezone is 99 (user default timezone), then try update dst.
-    if ((99 == $timezone) || !is_numeric($timezone)) {
-        $date += dst_offset_on($date, $timezone);
-    }
-
-    $timezone = get_user_timezone_offset($timezone);
-
-    // If we are running under Windows convert to windows encoding and then back to UTF-8
-    // (because it's impossible to specify UTF-8 to fetch locale info in Win32).
-
-    if (abs($timezone) > 13) {
-        // Server time.
-        $datestring = date_format_string($date, $format, $timezone);
-        if ($fixday) {
-            $daystring  = ltrim(str_replace(array(' 0', ' '), '', strftime(' %d', $date)));
-            $datestring = str_replace('DD', $daystring, $datestring);
-        }
-        if ($fixhour) {
-            $hourstring = ltrim(str_replace(array(' 0', ' '), '', strftime(' %I', $date)));
-            $datestring = str_replace('HH', $hourstring, $datestring);
-        }
-
-    } else {
-        $date += (int)($timezone * 3600);
-        $datestring = date_format_string($date, $format, $timezone);
-        if ($fixday) {
-            $daystring  = ltrim(str_replace(array(' 0', ' '), '', gmstrftime(' %d', $date)));
-            $datestring = str_replace('DD', $daystring, $datestring);
-        }
-        if ($fixhour) {
-            $hourstring = ltrim(str_replace(array(' 0', ' '), '', gmstrftime(' %I', $date)));
-            $datestring = str_replace('HH', $hourstring, $datestring);
-        }
-    }
-
-    return $datestring;
+    $calendartype = \core_calendar\type_factory::get_calendar_instance();
+    return $calendartype->timestamp_to_date_string($date, $format, $timezone, $fixday, $fixhour);
 }
 
 /**
@@ -2317,7 +2253,7 @@ function usergetdate($time, $timezone=99) {
     $getdate['wday'] = (int)$getdate['wday'];
     $getdate['mday'] = (int)$getdate['mday'];
     $getdate['hours'] = (int)$getdate['hours'];
-    $getdate['minutes']  = (int)$getdate['minutes'];
+    $getdate['minutes'] = (int)$getdate['minutes'];
     return $getdate;
 }
 
@@ -3213,11 +3149,7 @@ function require_login($courseorid = null, $autologinguest = true, $cm = null, $
 function require_logout() {
     global $USER;
 
-    $params = $USER;
-
     if (isloggedin()) {
-        add_to_log(SITEID, "user", "logout", "view.php?id=$USER->id&course=".SITEID, $USER->id, 0, $USER->id);
-
         $authsequence = get_enabled_auth_plugins(); // Auths, in sequence.
         foreach ($authsequence as $authname) {
             $authplugin = get_auth_plugin($authname);
@@ -3225,9 +3157,16 @@ function require_logout() {
         }
     }
 
-    events_trigger('user_logout', $params);
+    $event = \core\event\user_loggedout::create(
+            array(
+                'objectid' => $USER->id,
+                'context' => context_user::instance($USER->id)
+                )
+            );
+    $event->trigger();
+
     session_get_instance()->terminate_current();
-    unset($params);
+    unset($GLOBALS['USER']);
 }
 
 /**
@@ -3440,7 +3379,9 @@ function get_user_key($script, $userid, $instance=null, $iprestriction=null, $va
  * @return bool Always returns true
  */
 function update_user_login_times() {
-    global $USER, $DB;
+    global $USER, $DB, $CFG;
+
+    require_once($CFG->dirroot.'/user/lib.php');
 
     if (isguestuser()) {
         // Do not update guest access times/ips for performance.
@@ -3466,7 +3407,7 @@ function update_user_login_times() {
     $USER->lastaccess = $user->lastaccess = $now;
     $USER->lastip = $user->lastip = getremoteaddr();
 
-    $DB->update_record('user', $user);
+    user_update_user($user, false);
     return true;
 }
 
@@ -3965,7 +3906,9 @@ function get_user_fieldnames() {
  */
 function create_user_record($username, $password, $auth = 'manual') {
     global $CFG, $DB;
-    require_once($CFG->dirroot."/user/profile/lib.php");
+    require_once($CFG->dirroot.'/user/profile/lib.php');
+    require_once($CFG->dirroot.'/user/lib.php');
+
     // Just in case check text case.
     $username = trim(core_text::strtolower($username));
 
@@ -4006,7 +3949,7 @@ function create_user_record($username, $password, $auth = 'manual') {
     $newuser->timemodified = $newuser->timecreated;
     $newuser->mnethostid = $CFG->mnet_localhost_id;
 
-    $newuser->id = $DB->insert_record('user', $newuser);
+    $newuser->id = user_create_user($newuser, false);
 
     // Save user profile data.
     profile_save_data($newuser);
@@ -4017,10 +3960,6 @@ function create_user_record($username, $password, $auth = 'manual') {
     }
     // Set the password.
     update_internal_user_password($user, $password);
-
-    // Fetch full user record for the event, the complete user data contains too much info
-    // and we want to be consistent with other places that trigger this event.
-    events_trigger('user_created', $DB->get_record('user', array('id' => $user->id)));
 
     return $user;
 }
@@ -4034,6 +3973,7 @@ function create_user_record($username, $password, $auth = 'manual') {
 function update_user_record($username) {
     global $DB, $CFG;
     require_once($CFG->dirroot."/user/profile/lib.php");
+    require_once($CFG->dirroot.'/user/lib.php');
     // Just in case check text case.
     $username = trim(core_text::strtolower($username));
 
@@ -4076,14 +4016,10 @@ function update_user_record($username) {
         if ($newuser) {
             $newuser['id'] = $oldinfo->id;
             $newuser['timemodified'] = time();
-            $DB->update_record('user', $newuser);
+            user_update_user((object) $newuser, false);
 
             // Save user profile data.
             profile_save_data((object) $newuser);
-
-            // Fetch full user record for the event, the complete user data contains too much info
-            // and we want to be consistent with other places that trigger this event.
-            events_trigger('user_updated', $DB->get_record('user', array('id' => $oldinfo->id)));
         }
     }
 
@@ -4141,6 +4077,7 @@ function delete_user(stdClass $user) {
     require_once($CFG->libdir.'/gradelib.php');
     require_once($CFG->dirroot.'/message/lib.php');
     require_once($CFG->dirroot.'/tag/lib.php');
+    require_once($CFG->dirroot.'/user/lib.php');
 
     // Make sure nobody sends bogus record type as parameter.
     if (!property_exists($user, 'id') or !property_exists($user, 'username')) {
@@ -4166,6 +4103,9 @@ function delete_user(stdClass $user) {
         debugging('Local administrator accounts can not be deleted.');
         return false;
     }
+
+    // Keep a copy of user context, we need it for event.
+    $usercontext = context_user::instance($user->id);
 
     // Delete all grades - backup is kept in grade_grades_history table.
     grade_user_delete($user->id);
@@ -4216,9 +4156,6 @@ function delete_user(stdClass $user) {
     // Force logout - may fail if file based sessions used, sorry.
     session_kill_user($user->id);
 
-    // Now do a final accesslib cleanup - removes all role assignments in user context and context itself.
-    context_helper::delete_instance(CONTEXT_USER, $user->id);
-
     // Workaround for bulk deletes of users with the same email address.
     $delname = "$user->email.".time();
     while ($DB->record_exists('user', array('username' => $delname))) { // No need to use mnethostid here.
@@ -4235,9 +4172,22 @@ function delete_user(stdClass $user) {
     $updateuser->picture      = 0;
     $updateuser->timemodified = time();
 
-    $DB->update_record('user', $updateuser);
-    // Add this action to log.
-    add_to_log(SITEID, 'user', 'delete', "view.php?id=$user->id", $user->firstname.' '.$user->lastname);
+    user_update_user($updateuser, false);
+
+    // Now do a final accesslib cleanup - removes all role assignments in user context and context itself.
+    context_helper::delete_instance(CONTEXT_USER, $user->id);
+
+    // Any plugin that needs to cleanup should register this event.
+    // Trigger event.
+    $event = \core\event\user_deleted::create(
+            array(
+                'objectid' => $user->id,
+                'context' => $usercontext,
+                'other' => array('user' => (array)clone $user)
+                )
+            );
+    $event->add_record_snapshot('user', $updateuser);
+    $event->trigger();
 
     // We will update the user's timemodified, as it will be passed to the user_deleted event, which
     // should know about this updated property persisted to the user's table.
@@ -4246,9 +4196,6 @@ function delete_user(stdClass $user) {
     // Notify auth plugin - do not block the delete even when plugin fails.
     $authplugin = get_auth_plugin($user->auth);
     $authplugin->user_delete($user);
-
-    // Any plugin that needs to cleanup should register this event.
-    events_trigger('user_deleted', $user);
 
     return true;
 }
@@ -4859,10 +4806,15 @@ function delete_course($courseorid, $showfeedback = true) {
     $DB->delete_records("course", array("id" => $courseid));
     $DB->delete_records("course_format_options", array("courseid" => $courseid));
 
-    // Trigger events.
-    $course->context = $context;
-    // You can not fetch context in the event because it was already deleted.
-    events_trigger('course_deleted', $course);
+    // Trigger a course deleted event.
+    $event = \core\event\course_deleted::create(array(
+        'objectid' => $course->id,
+        'context' => $context,
+        'other' => array('shortname' => $course->shortname,
+                         'fullname' => $course->fullname)
+    ));
+    $event->add_record_snapshot('course', $course);
+    $event->trigger();
 
     return true;
 }
@@ -4888,6 +4840,7 @@ function delete_course($courseorid, $showfeedback = true) {
  */
 function remove_course_contents($courseid, $showfeedback = true, array $options = null) {
     global $CFG, $DB, $OUTPUT;
+
     require_once($CFG->libdir.'/badgeslib.php');
     require_once($CFG->libdir.'/completionlib.php');
     require_once($CFG->libdir.'/questionlib.php');
@@ -5093,7 +5046,7 @@ function remove_course_contents($courseid, $showfeedback = true, array $options 
     $oldcourse = new stdClass();
     $oldcourse->id               = $course->id;
     $oldcourse->summary          = '';
-    $oldcourse->modinfo          = null;
+    $oldcourse->cacherev         = 0;
     $oldcourse->legacyfiles      = 0;
     $oldcourse->enablecompletion = 0;
     if (!empty($options['keep_groups_and_groupings'])) {
@@ -5127,10 +5080,20 @@ function remove_course_contents($courseid, $showfeedback = true, array $options 
     // also some non-standard unsupported plugins may try to store something there.
     fulldelete($CFG->dataroot.'/'.$course->id);
 
-    // Finally trigger the event.
-    $course->context = $coursecontext; // You can not access context in cron event later after course is deleted.
-    $course->options = $options;       // Not empty if we used any crazy hack.
-    events_trigger('course_content_removed', $course);
+    // Delete from cache to reduce the cache size especially makes sense in case of bulk course deletion.
+    $cachemodinfo = cache::make('core', 'coursemodinfo');
+    $cachemodinfo->delete($courseid);
+
+    // Trigger a course content deleted event.
+    $event = \core\event\course_content_deleted::create(array(
+        'objectid' => $course->id,
+        'context' => $coursecontext,
+        'other' => array('shortname' => $course->shortname,
+                         'fullname' => $course->fullname,
+                         'options' => $options) // Passing this for legacy reasons.
+    ));
+    $event->add_record_snapshot('course', $course);
+    $event->trigger();
 
     return true;
 }
@@ -5690,7 +5653,7 @@ function email_to_user($user, $from, $subject, $messagetext, $messagehtml = '', 
     $temprecipients = array();
     $tempreplyto = array();
 
-    $supportuser = generate_email_supportuser();
+    $supportuser = core_user::get_support_user();
 
     // Make up an email address for handling bounces.
     if (!empty($CFG->handlebounces)) {
@@ -5840,30 +5803,6 @@ function generate_email_signoff() {
 }
 
 /**
- * Generate a fake user for emails based on support settings
- *
- * @return stdClass user info
- */
-function generate_email_supportuser() {
-    global $CFG;
-
-    static $supportuser;
-
-    if (!empty($supportuser)) {
-        return $supportuser;
-    }
-
-    $supportuser = new stdClass();
-    $supportuser->email = $CFG->supportemail ? $CFG->supportemail : $CFG->noreplyaddress;
-    $supportuser->firstname = $CFG->supportname ? $CFG->supportname : get_string('noreplyname');
-    $supportuser->lastname = '';
-    $supportuser->maildisplay = true;
-
-    return $supportuser;
-}
-
-
-/**
  * Sets specified user's password and send the new password to the user via email.
  *
  * @param stdClass $user A {@link $USER} object
@@ -5880,7 +5819,7 @@ function setnew_password_and_mail($user, $fasthash = false) {
 
     $site  = get_site();
 
-    $supportuser = generate_email_supportuser();
+    $supportuser = core_user::get_support_user();
 
     $newpassword = generate_password();
 
@@ -5914,7 +5853,7 @@ function reset_password_and_mail($user) {
     global $CFG;
 
     $site  = get_site();
-    $supportuser = generate_email_supportuser();
+    $supportuser = core_user::get_support_user();
 
     $userauth = get_auth_plugin($user->auth);
     if (!$userauth->can_reset_password() or !is_enabled_auth($user->auth)) {
@@ -5957,7 +5896,7 @@ function send_confirmation_email($user) {
     global $CFG;
 
     $site = get_site();
-    $supportuser = generate_email_supportuser();
+    $supportuser = core_user::get_support_user();
 
     $data = new stdClass();
     $data->firstname = fullname($user);
@@ -5988,7 +5927,7 @@ function send_password_change_confirmation_email($user) {
     global $CFG;
 
     $site = get_site();
-    $supportuser = generate_email_supportuser();
+    $supportuser = core_user::get_support_user();
 
     $data = new stdClass();
     $data->firstname = $user->firstname;
@@ -6015,7 +5954,7 @@ function send_password_change_info($user) {
     global $CFG;
 
     $site = get_site();
-    $supportuser = generate_email_supportuser();
+    $supportuser = core_user::get_support_user();
     $systemcontext = context_system::instance();
 
     $data = new stdClass();
@@ -6728,8 +6667,8 @@ function get_string($identifier, $component = '', $a = null, $lazyload = false) 
         return new lang_string($identifier, $component, $a);
     }
 
-    if (debugging('', DEBUG_DEVELOPER) && clean_param($identifier, PARAM_STRINGID) === '') {
-        throw new coding_exception('Invalid string identifier. The identifier cannot be empty. Please fix your get_string() call.');
+    if ($CFG->debugdeveloper && clean_param($identifier, PARAM_STRINGID) === '') {
+        throw new coding_exception('Invalid string identifier. The identifier cannot be empty. Please fix your get_string() call.', DEBUG_DEVELOPER);
     }
 
     // There is now a forth argument again, this time it is a boolean however so
@@ -7222,7 +7161,7 @@ function get_list_of_plugins($directory='mod', $exclude='', $basedir='') {
         $basedir = $basedir .'/'. $directory;
     }
 
-    if (empty($exclude) and debugging('', DEBUG_DEVELOPER)) {
+    if ($CFG->debugdeveloper and empty($exclude)) {
         // Make sure devs do not use this to list normal plugins,
         // this is intended for general directories that are not plugins!
 
@@ -7401,448 +7340,6 @@ function plugin_supports($type, $name, $feature, $default = null) {
  */
 function check_php_version($version='5.2.4') {
     return (version_compare(phpversion(), $version) >= 0);
-}
-
-/**
- * Checks to see if is the browser operating system matches the specified brand.
- *
- * Known brand: 'Windows','Linux','Macintosh','SGI','SunOS','HP-UX'
- *
- * @uses $_SERVER
- * @param string $brand The operating system identifier being tested
- * @return bool true if the given brand below to the detected operating system
- */
-function check_browser_operating_system($brand) {
-    if (empty($_SERVER['HTTP_USER_AGENT'])) {
-        return false;
-    }
-
-    if (preg_match("/$brand/i", $_SERVER['HTTP_USER_AGENT'])) {
-        return true;
-    }
-
-    return false;
-}
-
-/**
- * Checks to see if is a browser matches the specified
- * brand and is equal or better version.
- *
- * @uses $_SERVER
- * @param string $brand The browser identifier being tested
- * @param int $version The version of the browser, if not specified any version (except 5.5 for IE for BC reasons)
- * @return bool true if the given version is below that of the detected browser
- */
-function check_browser_version($brand, $version = null) {
-    if (empty($_SERVER['HTTP_USER_AGENT'])) {
-        return false;
-    }
-
-    $agent = $_SERVER['HTTP_USER_AGENT'];
-
-    switch ($brand) {
-
-        case 'Camino':
-            // OSX browser using Gecke engine.
-            if (strpos($agent, 'Camino') === false) {
-                return false;
-            }
-            if (empty($version)) {
-                return true; // No version specified.
-            }
-            if (preg_match("/Camino\/([0-9\.]+)/i", $agent, $match)) {
-                if (version_compare($match[1], $version) >= 0) {
-                    return true;
-                }
-            }
-            break;
-
-        case 'Firefox':
-            // Mozilla Firefox browsers.
-            if (strpos($agent, 'Iceweasel') === false and strpos($agent, 'Firefox') === false) {
-                return false;
-            }
-            if (empty($version)) {
-                return true; // No version specified..
-            }
-            if (preg_match("/(Iceweasel|Firefox)\/([0-9\.]+)/i", $agent, $match)) {
-                if (version_compare($match[2], $version) >= 0) {
-                    return true;
-                }
-            }
-            break;
-
-        case 'Gecko':
-            // Gecko based browsers.
-            // Do not look for dates any more, we expect real Firefox version here.
-            if (empty($version)) {
-                $version = 1;
-            } else if ($version > 20000000) {
-                // This is just a guess, it is not supposed to be 100% accurate!
-                if (preg_match('/^201/', $version)) {
-                    $version = 3.6;
-                } else if (preg_match('/^200[7-9]/', $version)) {
-                    $version = 3;
-                } else if (preg_match('/^2006/', $version)) {
-                    $version = 2;
-                } else {
-                    $version = 1.5;
-                }
-            }
-            if (preg_match("/(Iceweasel|Firefox)\/([0-9\.]+)/i", $agent, $match)) {
-                // Use real Firefox version if specified in user agent string.
-                if (version_compare($match[2], $version) >= 0) {
-                    return true;
-                }
-            } else if (preg_match("/Gecko\/([0-9\.]+)/i", $agent, $match)) {
-                // Gecko might contain date or Firefox revision, let's just guess the Firefox version from the date.
-                $browserver = $match[1];
-                if ($browserver > 20000000) {
-                    // This is just a guess, it is not supposed to be 100% accurate!
-                    if (preg_match('/^201/', $browserver)) {
-                        $browserver = 3.6;
-                    } else if (preg_match('/^200[7-9]/', $browserver)) {
-                        $browserver = 3;
-                    } else if (preg_match('/^2006/', $version)) {
-                        $browserver = 2;
-                    } else {
-                        $browserver = 1.5;
-                    }
-                }
-                if (version_compare($browserver, $version) >= 0) {
-                    return true;
-                }
-            }
-            break;
-
-        case 'MSIE':
-            // Internet Explorer.
-            if (strpos($agent, 'Opera') !== false) {
-                // Reject Opera.
-                return false;
-            }
-            // In case of IE we have to deal with BC of the version parameter.
-            if (is_null($version)) {
-                $version = 5.5; // Anything older is not considered a browser at all!
-            }
-            // IE uses simple versions, let's cast it to float to simplify the logic here.
-            $version = round($version, 1);
-            // See: http://www.useragentstring.com/pages/Internet%20Explorer/.
-            if (preg_match("/MSIE ([0-9\.]+)/", $agent, $match)) {
-                $browser = $match[1];
-            } else {
-                return false;
-            }
-            // IE8 and later versions may pretend to be IE7 for intranet sites, use Trident version instead,
-            // the Trident should always describe the capabilities of IE in any emulation mode.
-            if ($browser === '7.0' and preg_match("/Trident\/([0-9\.]+)/", $agent, $match)) {
-                $browser = $match[1] + 4; // NOTE: Hopefully this will work also for future IE versions.
-            }
-            $browser = round($browser, 1);
-            return ($browser >= $version);
-            break;
-
-        case 'Opera':
-            // Opera.
-            if (strpos($agent, 'Opera') === false) {
-                return false;
-            }
-            if (empty($version)) {
-                return true; // No version specified.
-            }
-            // Recent Opera useragents have Version/ with the actual version, e.g.:
-            // Opera/9.80 (Windows NT 6.1; WOW64; U; en) Presto/2.10.289 Version/12.01
-            // That's Opera 12.01, not 9.8.
-            if (preg_match("/Version\/([0-9\.]+)/i", $agent, $match)) {
-                if (version_compare($match[1], $version) >= 0) {
-                    return true;
-                }
-            } else if (preg_match("/Opera\/([0-9\.]+)/i", $agent, $match)) {
-                if (version_compare($match[1], $version) >= 0) {
-                    return true;
-                }
-            }
-            break;
-
-        case 'WebKit':
-            // WebKit based browser - everything derived from it (Safari, Chrome, iOS, Android and other mobiles).
-            if (strpos($agent, 'AppleWebKit') === false) {
-                return false;
-            }
-            if (empty($version)) {
-                return true; // No version specified.
-            }
-            if (preg_match("/AppleWebKit\/([0-9.]+)/i", $agent, $match)) {
-                if (version_compare($match[1], $version) >= 0) {
-                    return true;
-                }
-            }
-            break;
-
-        case 'Safari':
-            // Desktop version of Apple Safari browser - no mobile or touch devices.
-            if (strpos($agent, 'AppleWebKit') === false) {
-                return false;
-            }
-            // Look for AppleWebKit, excluding strings with OmniWeb, Shiira and SymbianOS and any other mobile devices
-            if (strpos($agent, 'OmniWeb')) { // Reject OmniWeb.
-                return false;
-            }
-            if (strpos($agent, 'Shiira')) { // Reject Shiira.
-                return false;
-            }
-            if (strpos($agent, 'SymbianOS')) { // Reject SymbianOS.
-                return false;
-            }
-            if (strpos($agent, 'Android')) { // Reject Androids too.
-                return false;
-            }
-            if (strpos($agent, 'iPhone') or strpos($agent, 'iPad') or strpos($agent, 'iPod')) {
-                // No Apple mobile devices here - editor does not work, course ajax is not touch compatible, etc.
-                return false;
-            }
-            if (strpos($agent, 'Chrome')) { // Reject chrome browsers - it needs to be tested explicitly.
-                return false;
-            }
-
-            if (empty($version)) {
-                return true; // No version specified.
-            }
-            if (preg_match("/AppleWebKit\/([0-9.]+)/i", $agent, $match)) {
-                if (version_compare($match[1], $version) >= 0) {
-                    return true;
-                }
-            }
-            break;
-
-        case 'Chrome':
-            if (strpos($agent, 'Chrome') === false) {
-                return false;
-            }
-            if (empty($version)) {
-                return true; // No version specified.
-            }
-            if (preg_match("/Chrome\/(.*)[ ]+/i", $agent, $match)) {
-                if (version_compare($match[1], $version) >= 0) {
-                    return true;
-                }
-            }
-            break;
-
-        case 'Safari iOS':
-            // Safari on iPhone, iPad and iPod touch.
-            if (strpos($agent, 'AppleWebKit') === false or strpos($agent, 'Safari') === false) {
-                return false;
-            }
-            if (!strpos($agent, 'iPhone') and !strpos($agent, 'iPad') and !strpos($agent, 'iPod')) {
-                return false;
-            }
-            if (empty($version)) {
-                return true; // No version specified.
-            }
-            if (preg_match("/AppleWebKit\/([0-9]+)/i", $agent, $match)) {
-                if (version_compare($match[1], $version) >= 0) {
-                    return true;
-                }
-            }
-            break;
-
-        case 'WebKit Android':
-            // WebKit browser on Android.
-            if (strpos($agent, 'Linux; U; Android') === false) {
-                return false;
-            }
-            if (empty($version)) {
-                return true; // No version specified.
-            }
-            if (preg_match("/AppleWebKit\/([0-9]+)/i", $agent, $match)) {
-                if (version_compare($match[1], $version) >= 0) {
-                    return true;
-                }
-            }
-            break;
-    }
-
-    return false;
-}
-
-/**
- * Returns whether a device/browser combination is mobile, tablet, legacy, default or the result of
- * an optional admin specified regular expression.  If enabledevicedetection is set to no or not set
- * it returns default
- *
- * @return string device type
- */
-function get_device_type() {
-    global $CFG;
-
-    if (empty($CFG->enabledevicedetection) || empty($_SERVER['HTTP_USER_AGENT'])) {
-        return 'default';
-    }
-
-    $useragent = $_SERVER['HTTP_USER_AGENT'];
-
-    if (!empty($CFG->devicedetectregex)) {
-        $regexes = json_decode($CFG->devicedetectregex);
-
-        foreach ($regexes as $value => $regex) {
-            if (preg_match($regex, $useragent)) {
-                return $value;
-            }
-        }
-    }
-
-    // Mobile detection PHP direct copy from open source detectmobilebrowser.com.
-    $phonesregex = '/android .+ mobile|avantgo|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|symbian|treo|up\.(browser|link)|vodafone|wap|windows (ce|phone)|xda|xiino/i';
-    $modelsregex = '/1207|6310|6590|3gso|4thp|50[1-6]i|770s|802s|a wa|abac|ac(er|oo|s\-)|ai(ko|rn)|al(av|ca|co)|amoi|an(ex|ny|yw)|aptu|ar(ch|go)|as(te|us)|attw|au(di|\-m|r |s )|avan|be(ck|ll|nq)|bi(lb|rd)|bl(ac|az)|br(e|v)w|bumb|bw\-(n|u)|c55\/|capi|ccwa|cdm\-|cell|chtm|cldc|cmd\-|co(mp|nd)|craw|da(it|ll|ng)|dbte|dc\-s|devi|dica|dmob|do(c|p)o|ds(12|\-d)|el(49|ai)|em(l2|ul)|er(ic|k0)|esl8|ez([4-7]0|os|wa|ze)|fetc|fly(\-|_)|g1 u|g560|gene|gf\-5|g\-mo|go(\.w|od)|gr(ad|un)|haie|hcit|hd\-(m|p|t)|hei\-|hi(pt|ta)|hp( i|ip)|hs\-c|ht(c(\-| |_|a|g|p|s|t)|tp)|hu(aw|tc)|i\-(20|go|ma)|i230|iac( |\-|\/)|ibro|idea|ig01|ikom|im1k|inno|ipaq|iris|ja(t|v)a|jbro|jemu|jigs|kddi|keji|kgt( |\/)|klon|kpt |kwc\-|kyo(c|k)|le(no|xi)|lg( g|\/(k|l|u)|50|54|e\-|e\/|\-[a-w])|libw|lynx|m1\-w|m3ga|m50\/|ma(te|ui|xo)|mc(01|21|ca)|m\-cr|me(di|rc|ri)|mi(o8|oa|ts)|mmef|mo(01|02|bi|de|do|t(\-| |o|v)|zz)|mt(50|p1|v )|mwbp|mywa|n10[0-2]|n20[2-3]|n30(0|2)|n50(0|2|5)|n7(0(0|1)|10)|ne((c|m)\-|on|tf|wf|wg|wt)|nok(6|i)|nzph|o2im|op(ti|wv)|oran|owg1|p800|pan(a|d|t)|pdxg|pg(13|\-([1-8]|c))|phil|pire|pl(ay|uc)|pn\-2|po(ck|rt|se)|prox|psio|pt\-g|qa\-a|qc(07|12|21|32|60|\-[2-7]|i\-)|qtek|r380|r600|raks|rim9|ro(ve|zo)|s55\/|sa(ge|ma|mm|ms|ny|va)|sc(01|h\-|oo|p\-)|sdk\/|se(c(\-|0|1)|47|mc|nd|ri)|sgh\-|shar|sie(\-|m)|sk\-0|sl(45|id)|sm(al|ar|b3|it|t5)|so(ft|ny)|sp(01|h\-|v\-|v )|sy(01|mb)|t2(18|50)|t6(00|10|18)|ta(gt|lk)|tcl\-|tdg\-|tel(i|m)|tim\-|t\-mo|to(pl|sh)|ts(70|m\-|m3|m5)|tx\-9|up(\.b|g1|si)|utst|v400|v750|veri|vi(rg|te)|vk(40|5[0-3]|\-v)|vm40|voda|vulc|vx(52|53|60|61|70|80|81|83|85|98)|w3c(\-| )|webc|whit|wi(g |nc|nw)|wmlb|wonu|x700|xda(\-|2|g)|yas\-|your|zeto|zte\-/i';
-    if (preg_match($phonesregex, $useragent) || preg_match($modelsregex, substr($useragent, 0, 4))) {
-        return 'mobile';
-    }
-
-    $tabletregex = '/Tablet browser|android|iPad|iProd|GT-P1000|GT-I9000|SHW-M180S|SGH-T849|SCH-I800|Build\/ERE27|sholest/i';
-    if (preg_match($tabletregex, $useragent)) {
-         return 'tablet';
-    }
-
-    // Safe way to check for IE6 and not get false positives for some IE 7/8 users.
-    if (substr($_SERVER['HTTP_USER_AGENT'], 0, 34) === 'Mozilla/4.0 (compatible; MSIE 6.0;') {
-        return 'legacy';
-    }
-
-    return 'default';
-}
-
-/**
- * Returns a list of the device types supporting by Moodle
- *
- * @param boolean $incusertypes includes types specified using the devicedetectregex admin setting
- * @return array $types
- */
-function get_device_type_list($incusertypes = true) {
-    global $CFG;
-
-    $types = array('default', 'legacy', 'mobile', 'tablet');
-
-    if ($incusertypes && !empty($CFG->devicedetectregex)) {
-        $regexes = json_decode($CFG->devicedetectregex);
-
-        foreach ($regexes as $value => $regex) {
-            $types[] = $value;
-        }
-    }
-
-    return $types;
-}
-
-/**
- * Returns the theme selected for a particular device or false if none selected.
- *
- * @param string $devicetype
- * @return string|false The name of the theme to use for the device or the false if not set
- */
-function get_selected_theme_for_device_type($devicetype = null) {
-    global $CFG;
-
-    if (empty($devicetype)) {
-        $devicetype = get_user_device_type();
-    }
-
-    $themevarname = get_device_cfg_var_name($devicetype);
-    if (empty($CFG->$themevarname)) {
-        return false;
-    }
-
-    return $CFG->$themevarname;
-}
-
-/**
- * Returns the name of the device type theme var in $CFG because there is not a convention to allow backwards compatibility.
- *
- * @param string $devicetype
- * @return string The config variable to use to determine the theme
- */
-function get_device_cfg_var_name($devicetype = null) {
-    if ($devicetype == 'default' || empty($devicetype)) {
-        return 'theme';
-    }
-
-    return 'theme' . $devicetype;
-}
-
-/**
- * Allows the user to switch the device they are seeing the theme for.
- * This allows mobile users to switch back to the default theme, or theme for any other device.
- *
- * @param string $newdevice The device the user is currently using.
- * @return string The device the user has switched to
- */
-function set_user_device_type($newdevice) {
-    global $USER;
-
-    $devicetype = get_device_type();
-    $devicetypes = get_device_type_list();
-
-    if ($newdevice == $devicetype) {
-        unset_user_preference('switchdevice'.$devicetype);
-    } else if (in_array($newdevice, $devicetypes)) {
-        set_user_preference('switchdevice'.$devicetype, $newdevice);
-    }
-}
-
-/**
- * Returns the device the user is currently using, or if the user has chosen to switch devices
- * for the current device type the type they have switched to.
- *
- * @return string The device the user is currently using or wishes to use
- */
-function get_user_device_type() {
-    $device = get_device_type();
-    $switched = get_user_preferences('switchdevice'.$device, false);
-    if ($switched != false) {
-        return $switched;
-    }
-    return $device;
-}
-
-/**
- * Returns one or several CSS class names that match the user's browser. These can be put
- * in the body tag of the page to apply browser-specific rules without relying on CSS hacks
- *
- * @return array An array of browser version classes
- */
-function get_browser_version_classes() {
-    $classes = array();
-
-    if (check_browser_version("MSIE", "0")) {
-        $classes[] = 'ie';
-        for ($i=12; $i>=6; $i--) {
-            if (check_browser_version("MSIE", $i)) {
-                $classes[] = 'ie'.$i;
-                break;
-            }
-        }
-
-    } else if (check_browser_version("Firefox") || check_browser_version("Gecko") || check_browser_version("Camino")) {
-        $classes[] = 'gecko';
-        if (preg_match('/rv\:([1-2])\.([0-9])/', $_SERVER['HTTP_USER_AGENT'], $matches)) {
-            $classes[] = "gecko{$matches[1]}{$matches[2]}";
-        }
-
-    } else if (check_browser_version("WebKit")) {
-        $classes[] = 'safari';
-        if (check_browser_version("Safari iOS")) {
-            $classes[] = 'ios';
-
-        } else if (check_browser_version("WebKit Android")) {
-            $classes[] = 'android';
-        }
-
-    } else if (check_browser_version("Opera")) {
-        $classes[] = 'opera';
-
-    }
-
-    return $classes;
 }
 
 /**
@@ -10068,8 +9565,8 @@ class lang_string {
         // Check if we need to process the string.
         if ($this->string === null) {
             // Check the quality of the identifier.
-            if (debugging('', DEBUG_DEVELOPER) && clean_param($this->identifier, PARAM_STRINGID) === '') {
-                throw new coding_exception('Invalid string identifier. Most probably some illegal character is part of the string identifier. Please check your string definition');
+            if ($CFG->debugdeveloper && clean_param($this->identifier, PARAM_STRINGID) === '') {
+                throw new coding_exception('Invalid string identifier. Most probably some illegal character is part of the string identifier. Please check your string definition', DEBUG_DEVELOPER);
             }
 
             // Process the string.

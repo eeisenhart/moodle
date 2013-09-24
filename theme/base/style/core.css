@@ -135,12 +135,18 @@ form.popupform div {display: inline;}
 .arrow_button input {overflow:hidden;}
 .action-icon img.smallicon { vertical-align: text-bottom; margin-left: .45em;}
 .dir-rtl .action-icon img.smallicon { margin-right: .45em; margin-left: 0;}
-h1.main img,
-h2.main img,
-h3.main img,
-h4.main img,
-h5.main img,
-h6.main img {vertical-align: middle;}
+h1 img.icon,
+h1 img.iconhelp,
+h2 img.icon,
+h2 img.iconhelp,
+h3 img.icon,
+h3 img.iconhelp,
+h4 img.icon,
+h4 img.iconhelp,
+h5 img.icon,
+h5 img.iconhelp,
+h6 img.icon,
+h6 img.iconhelp {vertical-align: middle;}
 
 /** The 1-pixel padding is there to avoid phantom scroll bars on OS X (FF, Safari and Chrome)**/
 .no-overflow {overflow:auto;padding-bottom:1px;}
@@ -241,13 +247,13 @@ a.skip:active {position: static;display: block;}
 .mform fieldset.hidden {border-width:0;}
 .mform fieldset.group {margin-bottom: 0}
 .mform fieldset.error {border: 1px solid #A00;}
-.mform .collapsible-actions {display: none;}
-.jsenabled .mform .collapsible-actions {text-align: right; display: block;}
-.dir-rtl .mform .collapsible-actions {text-align: left;}
-.mform .collapseexpand {background: url([[pix:t/collapsed]]) left center no-repeat; padding-left: 18px;}
-.dir-rtl .mform .collapseexpand {background-image: url([[pix:t/collapsed_rtl]]); background-position: right center; padding-left: 0; padding-right: 18px;}
-.mform .collapse-all,
-.dir-rtl .mform .collapse-all {background-image: url([[pix:t/expanded]]);}
+.collapsible-actions {display: none;}
+.jsenabled .collapsible-actions {text-align: right; display: block;}
+.dir-rtl .collapsible-actions {text-align: left;}
+.collapseexpand {background: url([[pix:t/collapsed]]) left center no-repeat; padding-left: 18px;}
+.dir-rtl .collapseexpand {background-image: url([[pix:t/collapsed_rtl]]); background-position: right center; padding-left: 0; padding-right: 18px;}
+.collapse-all,
+.dir-rtl .collapse-all {background-image: url([[pix:t/expanded]]);}
 .mform fieldset legend {padding: 0 0.35em;}
 .mform fieldset.collapsible legend a.fheader {padding-left: 18px; background: url([[pix:t/expanded]]) left center no-repeat;}
 .mform fieldset.collapsed legend a.fheader {background-image: url([[pix:t/collapsed]]);}
@@ -263,6 +269,7 @@ a.skip:active {position: static;display: block;}
 .mform .fitem fieldset.felement {margin-left:15%;padding-left:1%;margin-bottom:0}
 .mform .error,
 .mform .required {color:#A00;}
+.mform span.error {display: inline-block;padding: 4px;margin-bottom: 4px;background-color: #F2DEDE;border: 1px solid #EED3D7;}
 .mform .required .fgroup span label {color:#000;}
 .mform .fdescription.required {color:#A00;text-align:right;}
 .dir-rtl .mform .fdescription.required {text-align:left;}
@@ -348,6 +355,7 @@ input#id_externalurl {direction:ltr;}
 .groupmanagementtable #potentialcell {width: 42%;}
 .groupmanagementtable #buttonscell {width: 16%;}
 .groupmanagementtable #buttonscell input {width: 80%;}
+.groupmanagementtable #buttonscell p.arrow_button input {width: auto;min-width: 80%;margin: 0 auto;}
 .groupmanagementtable #removeselect_wrapper,
 .groupmanagementtable #addselect_wrapper {width: 100%;}
 .groupmanagementtable #removeselect_wrapper label,
@@ -540,6 +548,21 @@ body.tag .managelink {padding: 5px;}
 .path-backup .fitemtitle .iconlarge.icon-post { padding-left: 6px; }
 .path-backup.dir-rtl .fitemtitle .iconlarge.icon-post { padding-right: 6px; padding-right: 0; }
 .path-backup .fitem .smallicon { vertical-align: text-bottom; }
+.path-backup .wibbler { width: 500px; margin: 0 auto 10px; border-bottom: 1px solid black; border-right: 1px solid black; border-left: 1px solid black; position: relative; min-height: 4px;}
+.path-backup .wibbler .wibble { position: absolute; left: 0; right: 0; top: 0; height: 4px; }
+.path-backup .wibbler .state0 { background: #eee; }
+.path-backup .wibbler .state1 { background: #ddd; }
+.path-backup .wibbler .state2 { background: #ccc; }
+.path-backup .wibbler .state3 { background: #bbb; }
+.path-backup .wibbler .state4 { background: #aaa; }
+.path-backup .wibbler .state5 { background: #999; }
+.path-backup .wibbler .state6 { background: #888; }
+.path-backup .wibbler .state7 { background: #777; }
+.path-backup .wibbler .state8 { background: #666; }
+.path-backup .wibbler .state9 { background: #555; }
+.path-backup .wibbler .state10 { background: #444; }
+.path-backup .wibbler .state11 { background: #333; }
+.path-backup .wibbler .state12 { background: #222; }
 
 /**
  * Web Service
@@ -895,6 +918,10 @@ sup {vertical-align: super;}
     background-color:#AAA;
 }
 
+.moodle-dialogue-base .moodle-dialogue {
+    outline: #000 dotted 0;
+}
+
 .moodle-dialogue-base .hidden,
 .moodle-dialogue-base .moodle-dialogue-hidden {display:none;}
 .moodle-dialogue-base .moodle-dialogue {
@@ -908,13 +935,19 @@ sup {vertical-align: super;}
 
 .no-scrolling { overflow: hidden; }
 
-.moodle-dialogue-fullscreen {
+.moodle-dialogue-base .moodle-dialogue-fullscreen {
     left: 0px;
     top: 0px;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
+    right: 0px;
+    bottom: -50px;
+    position: fixed;
 }
+.moodle-dialogue-base .moodle-dialogue-fullscreen .closebutton {
+    width: 28px;
+    height: 16px;
+    background-size: 100%;
+}
+
 
 .moodle-dialogue-base .moodle-dialogue-wrap {
     margin-top:-3px;
@@ -990,10 +1023,13 @@ sup {vertical-align: super;}
     font-size: 16px;
 }
 
-.moodle-dialogue-base .moodle-dialogue-fullscreen,
-.moodle-dialogue-fullscreen .moodle-dialogue-content {
-    width: 100%;
-    height: 100%;
+.moodle-dialogue-base .moodle-dialogue-fullscreen .moodle-dialogue-content {
+    overflow: auto;
+    position: absolute;
+    top: 0px;
+    bottom: 50px;
+    left: 0px;
+    right: 0px;
     margin: 0px;
     border: 0px;
 }
@@ -1470,3 +1506,27 @@ div.badge .expireimage { width: 100px; height: 100px; left: 20px; top: 0px; }
 .dir-rtl .menu.align-tr-tr {right: auto;left: 0;}
 .dir-rtl .menu.align-bl-tr {right: 100%;left: auto;}
 .dir-rtl .menu.align-br-tr {right: auto;left: 0;}
+
+ul.dragdrop-keyboard-drag li { list-style-type: none; }
+.block-control-actions .moodle-core-dragdrop-draghandle img { width: 12px; height: 12px; }
+
+.block .header h2,
+.course-content h3,
+.pagelayout-frontpage h2,
+.pagelayout-frontpage h3,
+.pagelayout-frontpage h4,
+.pagelayout-frontpage h5,
+.pagelayout-frontpage h6,
+.pagelayout-coursecategory h3,
+.pagelayout-coursecategory h4,
+.pagelayout-coursecategory h5,
+.pagelayout-coursecategory h6 {
+    text-align: inherit;
+}
+a.disabled:hover,
+a.disabled {
+    text-decoration: none;
+    cursor: default;
+    font-style: italic;
+    color: #808080;
+}

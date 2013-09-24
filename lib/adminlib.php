@@ -194,13 +194,13 @@ function uninstall_plugin($type, $name) {
             }
         }
 
-        // clear course.modinfo for courses that used this module
-        $sql = "UPDATE {course}
-                   SET modinfo=''
-                 WHERE id IN (SELECT DISTINCT course
+        // Increment course.cacherev for courses that used this module.
+        // This will force cache rebuilding on the next request.
+        increment_revision_number('course', 'cacherev',
+                "id IN (SELECT DISTINCT course
                                 FROM {course_modules}
-                               WHERE module=?)";
-        $DB->execute($sql, array($module->id));
+                               WHERE module=?)",
+                array($module->id));
 
         // delete all the course module records
         $DB->delete_records('course_modules', array('module' => $module->id));
@@ -328,6 +328,9 @@ function uninstall_plugin($type, $name) {
 
     // Finally purge all caches.
     purge_all_caches();
+
+    // Invalidate the hash used for upgrade detections.
+    set_config('allversionshash', '');
 
     echo $OUTPUT->notification(get_string('success'), 'notifysuccess');
 }
@@ -968,6 +971,8 @@ class admin_category implements parentable_part_of_admin_tree {
      * @return bool True if successfully added, false if $something can not be added.
      */
     public function add($parentname, $something, $beforesibling = null) {
+        global $CFG;
+
         $parent = $this->locate($parentname);
         if (is_null($parent)) {
             debugging('parent does not exist!');
@@ -979,7 +984,7 @@ class admin_category implements parentable_part_of_admin_tree {
                 debugging('error - parts of tree can be inserted only into parentable parts');
                 return false;
             }
-            if (debugging('', DEBUG_DEVELOPER) && !is_null($this->locate($something->name))) {
+            if ($CFG->debugdeveloper && !is_null($this->locate($something->name))) {
                 // The name of the node is already used, simply warn the developer that this should not happen.
                 // It is intentional to check for the debug level before performing the check.
                 debugging('Duplicate admin page name: ' . $something->name, DEBUG_DEVELOPER);

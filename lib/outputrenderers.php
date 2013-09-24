@@ -345,6 +345,16 @@ class core_renderer extends renderer_base {
      */
     public function standard_head_html() {
         global $CFG, $SESSION;
+
+        // Before we output any content, we need to ensure that certain
+        // page components are set up.
+
+        // Blocks must be set up early as they may require javascript which
+        // has to be included in the page header before output is created.
+        foreach ($this->page->blocks->get_regions() as $region) {
+            $this->page->blocks->ensure_content_created($region, $this);
+        }
+
         $output = '';
         $output .= '<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />' . "\n";
         $output .= '<meta name="keywords" content="moodle, ' . $this->page->title . '" />' . "\n";
@@ -2035,9 +2045,11 @@ class core_renderer extends renderer_base {
      * @param string $component component name
      * @param string|moodle_url $icon
      * @param string $iconalt icon alt text
+     * @param int $level The level of importance of the heading. Defaulting to 2
+     * @param string $classnames A space-separated list of CSS classes. Defaulting to null
      * @return string HTML fragment
      */
-    public function heading_with_help($text, $helpidentifier, $component = 'moodle', $icon = '', $iconalt = '') {
+    public function heading_with_help($text, $helpidentifier, $component = 'moodle', $icon = '', $iconalt = '', $level = 2, $classnames = null) {
         $image = '';
         if ($icon) {
             $image = $this->pix_icon($icon, $iconalt, $component, array('class'=>'icon'));
@@ -2048,7 +2060,7 @@ class core_renderer extends renderer_base {
             $help = $this->help_icon($helpidentifier, $component);
         }
 
-        return $this->heading($image.$text.$help, 2, 'main help');
+        return $this->heading($image.$text.$help, $level, $classnames);
     }
 
     /**
@@ -2532,7 +2544,7 @@ EOD;
         }
         $output .= $this->box($message, 'errorbox', null, array('data-rel' => 'fatalerror'));
 
-        if (debugging('', DEBUG_DEVELOPER)) {
+        if ($CFG->debugdeveloper) {
             if (!empty($debuginfo)) {
                 $debuginfo = s($debuginfo); // removes all nasty JS
                 $debuginfo = str_replace("\n", '<br />', $debuginfo); // keep newlines
@@ -2659,11 +2671,11 @@ EOD;
      *
      * @param string $text The text of the heading
      * @param int $level The level of importance of the heading. Defaulting to 2
-     * @param string $classes A space-separated list of CSS classes
+     * @param string $classes A space-separated list of CSS classes. Defaulting to null
      * @param string $id An optional ID
      * @return string the HTML to output.
      */
-    public function heading($text, $level = 2, $classes = 'main', $id = null) {
+    public function heading($text, $level = 2, $classes = null, $id = null) {
         $level = (integer) $level;
         if ($level < 1 or $level > 6) {
             throw new coding_exception('Heading level must be an integer between 1 and 6.');
@@ -3037,7 +3049,7 @@ EOD;
      */
     protected function theme_switch_links() {
 
-        $actualdevice = get_device_type();
+        $actualdevice = core_useragent::get_device_type();
         $currentdevice = $this->page->devicetypeinuse;
         $switched = ($actualdevice != $currentdevice);
 
@@ -3364,7 +3376,7 @@ class core_renderer_cli extends core_renderer {
     public function fatal_error($message, $moreinfourl, $link, $backtrace, $debuginfo = null) {
         $output = "!!! $message !!!\n";
 
-        if (debugging('', DEBUG_DEVELOPER)) {
+        if ($CFG->debugdeveloper) {
             if (!empty($debuginfo)) {
                 $output .= $this->notification($debuginfo, 'notifytiny');
             }

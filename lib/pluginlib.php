@@ -652,6 +652,7 @@ class plugin_manager {
      * @return false|array array of standard plugins or false if the type is unknown
      */
     public static function standard_plugins_list($type) {
+
         $standard_plugins = array(
 
             'assignment' => array(
@@ -664,6 +665,12 @@ class plugin_manager {
 
             'assignfeedback' => array(
                 'comments', 'file', 'offline'
+            ),
+
+            'atto' => array(
+                'bold', 'clear', 'html', 'image', 'indent', 'italic', 'link',
+                'media', 'orderedlist', 'outdent', 'strike', 'title',
+                'underline', 'unlink', 'unorderedlist'
             ),
 
             'auth' => array(
@@ -698,6 +705,10 @@ class plugin_manager {
                 'file', 'memcache', 'memcached', 'mongodb', 'session', 'static'
             ),
 
+            'calendartype' => array(
+                'gregorian'
+            ),
+
             'coursereport' => array(
                 //deprecated!
             ),
@@ -712,7 +723,7 @@ class plugin_manager {
             ),
 
             'editor' => array(
-                'textarea', 'tinymce'
+                'textarea', 'tinymce', 'atto'
             ),
 
             'enrol' => array(
@@ -728,7 +739,7 @@ class plugin_manager {
             ),
 
             'format' => array(
-                'scorm', 'singleactivity', 'social', 'topics', 'weeks'
+                'singleactivity', 'social', 'topics', 'weeks'
             ),
 
             'gradeexport' => array(
@@ -3341,7 +3352,7 @@ class plugininfo_mod extends plugininfo_base {
      */
     protected function load_version_php($disablecache=false) {
 
-        $cache = cache::make('core', 'plugininfo_base');
+        $cache = cache::make('core', 'plugininfo_mod');
 
         $versionsphp = $cache->get('versions_php');
 

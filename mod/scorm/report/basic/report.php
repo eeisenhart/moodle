@@ -137,7 +137,7 @@ class scorm_basic_report extends scorm_default_report {
             $headers[]= get_string('last', 'scorm');
             $columns[]= 'score';
             $headers[]= get_string('score', 'scorm');
-            if ($detailedrep && $scoes = $DB->get_records('scorm_scoes', array("scorm"=>$scorm->id), 'id')) {
+            if ($detailedrep && $scoes = $DB->get_records('scorm_scoes', array("scorm"=>$scorm->id), 'sortorder, id')) {
                 foreach ($scoes as $sco) {
                     if ($sco->launch!='') {
                         $columns[]= 'scograde'.$sco->id;
@@ -405,7 +405,7 @@ class scorm_basic_report extends scorm_default_report {
                         $row[] = '-';
                     } else {
                         if (!$download) {
-                            $row[] = '<a href="userreport.php?a='.$scorm->id.'&amp;user='.$scouser->userid.'&amp;attempt='.$scouser->attempt.'">'.$scouser->attempt.'</a>';
+                            $row[] = '<a href="'.$CFG->wwwroot.'/mod/scorm/report/userreport.php?id='.$cm->id.'&amp;user='.$scouser->userid.'&amp;attempt='.$scouser->attempt.'">'.$scouser->attempt.'</a>';
                         } else {
                             $row[] = $scouser->attempt;
                         }
@@ -448,8 +448,8 @@ class scorm_basic_report extends scorm_default_report {
                                     }
                                     if (!$download) {
                                         $row[] = '<img src="'.$OUTPUT->pix_url($trackdata->status, 'scorm').'" alt="'.$strstatus.'" title="'.$strstatus.'" /><br/>
-                                                <a href="userreport.php?b='.$sco->id.'&amp;user='.$scouser->userid.'&amp;attempt='.$scouser->attempt.
-                                                '" title="'.get_string('details', 'scorm').'">'.$score.'</a>';
+                                                <a href="'.$CFG->wwwroot.'/mod/scorm/report/userreporttracks.php?id='.$cm->id.'&amp;scoid='.$sco->id.'&amp;user='.$scouser->userid.
+                                                '&amp;attempt='.$scouser->attempt.'" title="'.get_string('details', 'scorm').'">'.$score.'</a>';
                                     } else {
                                         $row[] = $score;
                                     }

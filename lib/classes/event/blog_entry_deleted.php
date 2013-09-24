@@ -22,6 +22,8 @@
  */
 namespace core\event;
 
+defined('MOODLE_INTERNAL') || die();
+
 /**
  * class blog_entry_deleted
  *
@@ -44,8 +46,7 @@ class blog_entry_deleted extends \core\event\base {
         $this->context = \context_system::instance();
         $this->data['objecttable'] = 'post';
         $this->data['crud'] = 'd';
-        // TODO: MDL-37658 set level.
-        $this->data['level'] = 50;
+        $this->data['level'] = self::LEVEL_PARTICIPATING;
     }
 
     /**
@@ -99,6 +100,7 @@ class blog_entry_deleted extends \core\event\base {
      * @return array of parameters to be passed to legacy add_to_log() function.
      */
     protected function get_legacy_logdata() {
-        return array (SITEID, 'blog', 'delete', 'index.php?userid='.$this->userid, 'deleted blog entry with entry id# '. $this->objectid);
+        return array (SITEID, 'blog', 'delete', 'index.php?userid=' . $this->relateduserid, 'deleted blog entry with entry id# '.
+                $this->objectid);
     }
 }

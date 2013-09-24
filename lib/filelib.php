@@ -81,6 +81,31 @@ function file_encode_url($urlbase, $path, $forcedownload=false, $https=false) {
 }
 
 /**
+ * Detects if area contains subdirs,
+ * this is intended for file areas that are attached to content
+ * migrated from 1.x where subdirs were allowed everywhere.
+ *
+ * @param context $context
+ * @param string $component
+ * @param string $filearea
+ * @param string $itemid
+ * @return bool
+ */
+function file_area_contains_subdirs(context $context, $component, $filearea, $itemid) {
+    global $DB;
+
+    if (!isset($itemid)) {
+        // Not initialised yet.
+        return false;
+    }
+
+    // Detect if any directories are already present, this is necessary for content upgraded from 1.x.
+    $select = "contextid = :contextid AND component = :component AND filearea = :filearea AND itemid = :itemid AND filepath <> '/' AND filename = '.'";
+    $params = array('contextid'=>$context->id, 'component'=>$component, 'filearea'=>$filearea, 'itemid'=>$itemid);
+    return $DB->record_exists_select('files', $select, $params);
+}
+
+/**
  * Prepares 'editor' formslib element from data in database
  *
  * The passed $data record must contain field foobar, foobarformat and optionally foobartrust. This
@@ -1935,6 +1960,43 @@ function send_header_404() {
 }
 
 /**
+ * The readfile function can fail when files are larger than 2GB (even on 64-bit
+ * platforms). This wrapper uses readfile for small files and custom code for
+ * large ones.
+ *
+ * @param string $path Path to file
+ * @param int $filesize Size of file (if left out, will get it automatically)
+ * @return int|bool Size read (will always be $filesize) or false if failed
+ */
+function readfile_allow_large($path, $filesize = -1) {
+    // Automatically get size if not specified.
+    if ($filesize === -1) {
+        $filesize = filesize($path);
+    }
+    if ($filesize <= 2147483647) {
+        // If the file is up to 2^31 - 1, send it normally using readfile.
+        return readfile($path);
+    } else {
+        // For large files, read and output in 64KB chunks.
+        $handle = fopen($path, 'r');
+        if ($handle === false) {
+            return false;
+        }
+        $left = $filesize;
+        while ($left > 0) {
+            $size = min($left, 65536);
+            $buffer = fread($handle, $size);
+            if ($buffer === false) {
+                return false;
+            }
+            echo $buffer;
+            $left -= $size;
+        }
+        return $filesize;
+    }
+}
+
+/**
  * Enhanced readfile() with optional acceleration.
  * @param string|stored_file $file
  * @param string $mimetype
@@ -2056,7 +2118,7 @@ function readfile_accel($file, $mimetype, $accelerate) {
     if (is_object($file)) {
         $file->readfile();
     } else {
-        readfile($file);
+        readfile_allow_large($file, $filesize);
     }
 }
 
@@ -2101,7 +2163,7 @@ function readstring_accel($string, $mimetype, $accelerate) {
 function send_temp_file($path, $filename, $pathisstring=false) {
     global $CFG;
 
-    if (check_browser_version('Firefox', '1.5')) {
+    if (core_useragent::is_firefox()) {
         // only FF is known to correctly save to disk before opening...
         $mimetype = mimeinfo('type', $filename);
     } else {
@@ -2121,7 +2183,7 @@ function send_temp_file($path, $filename, $pathisstring=false) {
     }
 
     // if user is using IE, urlencode the filename so that multibyte file name will show up correctly on popup
-    if (check_browser_version('MSIE')) {
+    if (core_useragent::is_ie()) {
         $filename = urlencode($filename);
     }
 
@@ -2197,12 +2259,12 @@ function send_file($path, $filename, $lifetime = 'default' , $filter=0, $pathiss
     // Use given MIME type if specified, otherwise guess it using mimeinfo.
     // IE, Konqueror and Opera open html file directly in browser from web even when directed to save it to disk :-O
     // only Firefox saves all files locally before opening when content-disposition: attachment stated
-    $isFF         = check_browser_version('Firefox', '1.5'); // only FF > 1.5 properly tested
+    $isFF         = core_useragent::is_firefox(); // only FF properly tested
     $mimetype     = ($forcedownload and !$isFF) ? 'application/x-forcedownload' :
                          ($mimetype ? $mimetype : mimeinfo('type', $filename));
 
     // if user is using IE, urlencode the filename so that multibyte file name will show up correctly on popup
-    if (check_browser_version('MSIE')) {
+    if (core_useragent::is_ie()) {
         $filename = rawurlencode($filename);
     }
 
@@ -2361,12 +2423,12 @@ function send_stored_file($stored_file, $lifetime=86400 , $filter=0, $forcedownl
     // IE, Konqueror and Opera open html file directly in browser from web even when directed to save it to disk :-O
     // only Firefox saves all files locally before opening when content-disposition: attachment stated
     $filename     = is_null($filename) ? $stored_file->get_filename() : $filename;
-    $isFF         = check_browser_version('Firefox', '1.5'); // only FF > 1.5 properly tested
+    $isFF         = core_useragent::is_firefox(); // only FF properly tested
     $mimetype     = ($forcedownload and !$isFF) ? 'application/x-forcedownload' :
                          ($stored_file->get_mimetype() ? $stored_file->get_mimetype() : mimeinfo('type', $filename));
 
     // if user is using IE, urlencode the filename so that multibyte file name will show up correctly on popup
-    if (check_browser_version('MSIE')) {
+    if (core_useragent::is_ie()) {
         $filename = rawurlencode($filename);
     }
 

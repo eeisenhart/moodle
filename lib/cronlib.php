@@ -46,8 +46,7 @@ function cron_run() {
         $DB->set_debug(true);
     }
     if (!empty($CFG->showcrondebugging)) {
-        $CFG->debug = DEBUG_DEVELOPER;
-        $CFG->debugdisplay = true;
+        set_debugging(DEBUG_DEVELOPER, true);
     }
 
     set_time_limit(0);
@@ -170,6 +169,9 @@ function cron_run() {
             $DB->delete_records_select('message_read', 'notification=1 AND timeread<:notificationdeletetime', array('notificationdeletetime'=>$notificationdeletetime));
             mtrace(' Cleaned up read notifications');
         }
+
+        mtrace(' Deleting temporary files...');
+        cron_delete_from_temp();
 
         mtrace("...finished clean-up tasks");
 
@@ -756,7 +758,7 @@ function notify_login_failures() {
         mtrace('Emailing admins about '. $count .' failed login attempts');
         foreach ($recip as $admin) {
             //emailing the admins directly rather than putting these through the messaging system
-            email_to_user($admin, generate_email_supportuser(), $subject, $body);
+            email_to_user($admin, core_user::get_support_user(), $subject, $body);
         }
     }
 
@@ -765,6 +767,51 @@ function notify_login_failures() {
 
     // Finally, delete all the temp records we have created in cache_flags
     $DB->delete_records_select('cache_flags', "flagtype IN ('login_failure_by_ip', 'login_failure_by_info')");
+
+    return true;
+}
+
+/**
+ * Delete files and directories older than one week from directory provided by $CFG->tempdir.
+ *
+ * @exception Exception Failed reading/accessing file or directory
+ * @return bool True on successful file and directory deletion; otherwise, false on failure
+ */
+function cron_delete_from_temp() {
+    global $CFG;
+
+    $tmpdir = $CFG->tempdir;
+    // Default to last weeks time.
+    $time = strtotime('-1 week');
+
+    try {
+        $dir = new RecursiveDirectoryIterator($tmpdir);
+        // Show all child nodes prior to their parent.
+        $iter = new RecursiveIteratorIterator($dir, RecursiveIteratorIterator::CHILD_FIRST);
+
+        for ($iter->rewind(); $iter->valid(); $iter->next()) {
+            $node = $iter->getRealPath();
+            if (!is_readable($node)) {
+                continue;
+            }
+            // Check if file or directory is older than the given time.
+            if ($iter->getMTime() < $time) {
+                if ($iter->isDir() && !$iter->isDot()) {
+                    if (@rmdir($node) === false) {
+                        mtrace("Failed removing directory '$node'.");
+                    }
+                }
+                if ($iter->isFile()) {
+                    if (@unlink($node) === false) {
+                        mtrace("Failed removing file '$node'.");
+                    }
+                }
+            }
+        }
+    } catch (Exception $e) {
+        mtrace('Failed reading/accessing file or directory.');
+        return false;
+    }
 
     return true;
 }

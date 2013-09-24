@@ -31,7 +31,7 @@ class core_component {
     /** @var array list of ignored directories - watch out for auth/db exception */
     protected static $ignoreddirs = array('CVS'=>true, '_vti_cnf'=>true, 'simpletest'=>true, 'db'=>true, 'yui'=>true, 'tests'=>true, 'classes'=>true, 'fonts'=>true);
     /** @var array list plugin types that support subplugins, do not add more here unless absolutely necessary */
-    protected static $supportsubplugins = array('mod', 'editor', 'local');
+    protected static $supportsubplugins = array('mod', 'editor', 'tool', 'local');
 
     /** @var null cache of plugin types */
     protected static $plugintypes = null;
@@ -43,6 +43,8 @@ class core_component {
     protected static $classmap = null;
     /** @var null list of some known files that can be included. */
     protected static $filemap = null;
+    /** @var int|float core version. */
+    protected static $version = null;
     /** @var array list of the files to map. */
     protected static $filestomap = array('lib.php', 'settings.php');
 
@@ -133,8 +135,11 @@ class core_component {
                 include($cachefile);
                 if (!is_array($cache)) {
                     // Something is very wrong.
-                } else if (!isset($cache['plugintypes']) or !isset($cache['plugins']) or !isset($cache['subsystems']) or !isset($cache['classmap'])) {
+                } else if (!isset($cache['version'])) {
                     // Something is very wrong.
+                } else if ((float) $cache['version'] !== (float) self::fetch_core_version()) {
+                    // Outdated cache. We trigger an error log to track an eventual repetitive failure of float comparison.
+                    error_log('Resetting core_component cache after core upgrade to version ' . self::fetch_core_version());
                 } else if ($cache['plugintypes']['mod'] !== "$CFG->dirroot/mod") {
                     // $CFG->dirroot was changed.
                 } else {
@@ -195,12 +200,9 @@ class core_component {
     protected static function is_developer() {
         global $CFG;
 
+        // Note we can not rely on $CFG->debug here because DB is not initialised yet.
         if (isset($CFG->config_php_settings['debug'])) {
-            // Standard moodle script.
             $debug = (int)$CFG->config_php_settings['debug'];
-        } else if (isset($CFG->debug)) {
-            // Usually script with ABORT_AFTER_CONFIG.
-            $debug = (int)$CFG->debug;
         } else {
             return false;
         }
@@ -230,6 +232,7 @@ class core_component {
             'plugins'     => self::$plugins,
             'classmap'    => self::$classmap,
             'filemap'     => self::$filemap,
+            'version'     => self::$version,
         );
 
         return '<?php
@@ -252,6 +255,23 @@ $cache = '.var_export($cache, true).';
 
         self::fill_classmap_cache();
         self::fill_filemap_cache();
+        self::fetch_core_version();
+    }
+
+    /**
+     * Get the core version.
+     *
+     * In order for this to work properly, opcache should be reset beforehand.
+     *
+     * @return float core version.
+     */
+    protected static function fetch_core_version() {
+        global $CFG;
+        if (self::$version === null) {
+            require($CFG->dirroot . '/version.php');
+            self::$version = $version;
+        }
+        return self::$version;
     }
 
     /**
@@ -344,6 +364,7 @@ $cache = '.var_export($cache, true).';
             'qtype'         => $CFG->dirroot.'/question/type',
             'mod'           => $CFG->dirroot.'/mod',
             'auth'          => $CFG->dirroot.'/auth',
+            'calendartype'  => $CFG->dirroot.'/calendar/type',
             'enrol'         => $CFG->dirroot.'/enrol',
             'message'       => $CFG->dirroot.'/message/output',
             'block'         => $CFG->dirroot.'/blocks',
@@ -431,6 +452,9 @@ $cache = '.var_export($cache, true).';
                     if (isset(self::$subsystems[$subtype])) {
                         error_log("Invalid subtype '$subtype'' detected in '$ownerdir', duplicates core subsystem.");
                         continue;
+                    }
+                    if ($CFG->admin !== 'admin' and strpos($dir, 'admin/') === 0) {
+                        $dir = preg_replace('|^admin/|', "$CFG->admin/", $dir);
                     }
                     if (!is_dir("$CFG->dirroot/$dir")) {
                         error_log("Invalid subtype directory '$dir' detected in '$ownerdir'.");
@@ -870,9 +894,7 @@ $cache = '.var_export($cache, true).';
         $versions = array();
 
         // Main version first.
-        $version = null;
-        include($CFG->dirroot.'/version.php');
-        $versions['core'] = $version;
+        $versions['core'] = self::fetch_core_version();
 
         // The problem here is tha the component cache might be stable,
         // we want this to work also on frontpage without resetting the component cache.
@@ -894,12 +916,12 @@ $cache = '.var_export($cache, true).';
                     $module = new stdClass();
                     $module->version = null;
                     include($fullplug.'/version.php');
-                    $versions[$plug] = $module->version;
+                    $versions[$type.'_'.$plug] = $module->version;
                 } else {
                     $plugin = new stdClass();
                     $plugin->version = null;
                     @include($fullplug.'/version.php');
-                    $versions[$plug] = $plugin->version;
+                    $versions[$type.'_'.$plug] = $plugin->version;
                 }
             }
         }

@@ -28,6 +28,21 @@ defined('MOODLE_INTERNAL') || die();
 /**
  * Class to store, cache, render and manage course category
  *
+ * @property-read int $id
+ * @property-read string $name
+ * @property-read string $idnumber
+ * @property-read string $description
+ * @property-read int $descriptionformat
+ * @property-read int $parent
+ * @property-read int $sortorder
+ * @property-read int $coursecount
+ * @property-read int $visible
+ * @property-read int $visibleold
+ * @property-read int $timemodified
+ * @property-read int $depth
+ * @property-read string $path
+ * @property-read string $theme
+ *
  * @package    core
  * @subpackage course
  * @copyright  2013 Marina Glancy
@@ -829,7 +844,7 @@ class coursecat implements renderable, cacheable_object, IteratorAggregate {
         $ctxselect = context_helper::get_preload_record_columns_sql('ctx');
         $fields = array('c.id', 'c.category', 'c.sortorder',
                         'c.shortname', 'c.fullname', 'c.idnumber',
-                        'c.startdate', 'c.visible');
+                        'c.startdate', 'c.visible', 'c.cacherev');
         if (!empty($options['summary'])) {
             $fields[] = 'c.summary';
             $fields[] = 'c.summaryformat';
@@ -1075,7 +1090,7 @@ class coursecat implements renderable, cacheable_object, IteratorAggregate {
      *     - modulelist - name of module (if we are searching for courses containing specific module
      *     - tagid - id of tag
      * @param array $options display options, same as in get_courses() except 'recursive' is ignored - search is always category-independent
-     * @return array
+     * @return course_in_list[]
      */
     public static function search_courses($search, $options = array()) {
         global $DB;
@@ -1208,7 +1223,7 @@ class coursecat implements renderable, cacheable_object, IteratorAggregate {
      *             Only cached fields may be used for sorting!
      *    - offset
      *    - limit - maximum number of children to return, 0 or null for no limit
-     * @return array array of instances of course_in_list
+     * @return course_in_list[]
      */
     public function get_courses($options = array()) {
         global $DB;
@@ -1366,6 +1381,7 @@ class coursecat implements renderable, cacheable_object, IteratorAggregate {
      */
     public function delete_full($showfeedback = true) {
         global $CFG, $DB;
+
         require_once($CFG->libdir.'/gradelib.php');
         require_once($CFG->libdir.'/questionlib.php');
         require_once($CFG->dirroot.'/cohort/lib.php');
@@ -1400,12 +1416,20 @@ class coursecat implements renderable, cacheable_object, IteratorAggregate {
 
         // finally delete the category and it's context
         $DB->delete_records('course_categories', array('id' => $this->id));
-        context_helper::delete_instance(CONTEXT_COURSECAT, $this->id);
-        add_to_log(SITEID, "category", "delete", "index.php", "$this->name (ID $this->id)");
+
+        $coursecatcontext = context_coursecat::instance($this->id);
+        $coursecatcontext->delete();
 
         cache_helper::purge_by_event('changesincoursecat');
 
-        events_trigger('course_category_deleted', $this);
+        // Trigger a course category deleted event.
+        $event = \core\event\course_category_deleted::create(array(
+            'objectid' => $this->id,
+            'context' => $coursecatcontext,
+            'other' => array('name' => $this->name)
+        ));
+        $event->set_legacy_eventdata($this);
+        $event->trigger();
 
         // If we deleted $CFG->defaultrequestcategory, make it point somewhere else.
         if ($this->id == $CFG->defaultrequestcategory) {
@@ -1495,6 +1519,7 @@ class coursecat implements renderable, cacheable_object, IteratorAggregate {
      */
     public function delete_move($newparentid, $showfeedback = false) {
         global $CFG, $DB, $OUTPUT;
+
         require_once($CFG->libdir.'/gradelib.php');
         require_once($CFG->libdir.'/questionlib.php');
         require_once($CFG->dirroot.'/cohort/lib.php');
@@ -1543,9 +1568,15 @@ class coursecat implements renderable, cacheable_object, IteratorAggregate {
         // finally delete the category and it's context
         $DB->delete_records('course_categories', array('id' => $this->id));
         $context->delete();
-        add_to_log(SITEID, "category", "delete", "index.php", "$this->name (ID $this->id)");
 
-        events_trigger('course_category_deleted', $this);
+        // Trigger a course category deleted event.
+        $event = \core\event\course_category_deleted::create(array(
+            'objectid' => $this->id,
+            'context' => $context,
+            'other' => array('name' => $this->name)
+        ));
+        $event->set_legacy_eventdata($this);
+        $event->trigger();
 
         cache_helper::purge_by_event('changesincoursecat');
 
@@ -2013,6 +2044,38 @@ class coursecat implements renderable, cacheable_object, IteratorAggregate {
  * and
  * {@link coursecat::get_courses()}
  *
+ * @property-read int $id
+ * @property-read int $category Category ID
+ * @property-read int $sortorder
+ * @property-read string $fullname
+ * @property-read string $shortname
+ * @property-read string $idnumber
+ * @property-read string $summary Course summary. Field is present if coursecat::get_courses()
+ *     was called with option 'summary'. Otherwise will be retrieved from DB on first request
+ * @property-read int $summaryformat Summary format. Field is present if coursecat::get_courses()
+ *     was called with option 'summary'. Otherwise will be retrieved from DB on first request
+ * @property-read string $format Course format. Retrieved from DB on first request
+ * @property-read int $showgrades Retrieved from DB on first request
+ * @property-read int $newsitems Retrieved from DB on first request
+ * @property-read int $startdate
+ * @property-read int $marker Retrieved from DB on first request
+ * @property-read int $maxbytes Retrieved from DB on first request
+ * @property-read int $legacyfiles Retrieved from DB on first request
+ * @property-read int $showreports Retrieved from DB on first request
+ * @property-read int $visible
+ * @property-read int $visibleold Retrieved from DB on first request
+ * @property-read int $groupmode Retrieved from DB on first request
+ * @property-read int $groupmodeforce Retrieved from DB on first request
+ * @property-read int $defaultgroupingid Retrieved from DB on first request
+ * @property-read string $lang Retrieved from DB on first request
+ * @property-read string $theme Retrieved from DB on first request
+ * @property-read int $timecreated Retrieved from DB on first request
+ * @property-read int $timemodified Retrieved from DB on first request
+ * @property-read int $requested Retrieved from DB on first request
+ * @property-read int $enablecompletion Retrieved from DB on first request
+ * @property-read int $completionnotify Retrieved from DB on first request
+ * @property-read int $cacherev
+ *
  * @package    core
  * @subpackage course
  * @copyright  2013 Marina Glancy
@@ -2139,12 +2202,11 @@ class course_in_list implements IteratorAggregate {
     public function has_course_overviewfiles() {
         global $CFG;
         if (empty($CFG->courseoverviewfileslimit)) {
-            return 0;
+            return false;
         }
-        require_once($CFG->libdir. '/filestorage/file_storage.php');
         $fs = get_file_storage();
         $context = context_course::instance($this->id);
-        return $fs->is_area_empty($context->id, 'course', 'overviewfiles');
+        return !$fs->is_area_empty($context->id, 'course', 'overviewfiles');
     }
 
     /**

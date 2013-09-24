@@ -28,7 +28,6 @@ defined('MOODLE_INTERNAL') || die;
 
 require_once($CFG->libdir.'/completionlib.php');
 require_once($CFG->libdir.'/filelib.php');
-require_once($CFG->dirroot.'/course/dnduploadlib.php');
 require_once($CFG->dirroot.'/course/format/lib.php');
 
 define('COURSE_MAX_LOGS_PER_PAGE', 1000);       // records
@@ -855,6 +854,138 @@ function print_log_ods($course, $user, $date, $order='l.time DESC', $modname,
 }
 
 /**
+ * Checks the integrity of the course data.
+ *
+ * In summary - compares course_sections.sequence and course_modules.section.
+ *
+ * More detailed, checks that:
+ * - course_sections.sequence contains each module id not more than once in the course
+ * - for each moduleid from course_sections.sequence the field course_modules.section
+ *   refers to the same section id (this means course_sections.sequence is more
+ *   important if they are different)
+ * - ($fullcheck only) each module in the course is present in one of
+ *   course_sections.sequence
+ * - ($fullcheck only) removes non-existing course modules from section sequences
+ *
+ * If there are any mismatches, the changes are made and records are updated in DB.
+ *
+ * Course cache is NOT rebuilt if there are any errors!
+ *
+ * This function is used each time when course cache is being rebuilt with $fullcheck = false
+ * and in CLI script admin/cli/fix_course_sequence.php with $fullcheck = true
+ *
+ * @param int $courseid id of the course
+ * @param array $rawmods result of funciton {@link get_course_mods()} - containst
+ *     the list of enabled course modules in the course. Retrieved from DB if not specified.
+ *     Argument ignored in cashe of $fullcheck, the list is retrieved form DB anyway.
+ * @param array $sections records from course_sections table for this course.
+ *     Retrieved from DB if not specified
+ * @param bool $fullcheck Will add orphaned modules to their sections and remove non-existing
+ *     course modules from sequences. Only to be used in site maintenance mode when we are
+ *     sure that another user is not in the middle of the process of moving/removing a module.
+ * @param bool $checkonly Only performs the check without updating DB, outputs all errors as debug messages.
+ * @return array array of messages with found problems. Empty output means everything is ok
+ */
+function course_integrity_check($courseid, $rawmods = null, $sections = null, $fullcheck = false, $checkonly = false) {
+    global $DB;
+    $messages = array();
+    if ($sections === null) {
+        $sections = $DB->get_records('course_sections', array('course' => $courseid), 'section', 'id,section,sequence');
+    }
+    if ($fullcheck) {
+        // Retrieve all records from course_modules regardless of module type visibility.
+        $rawmods = $DB->get_records('course_modules', array('course' => $courseid), 'id', 'id,section');
+    }
+    if ($rawmods === null) {
+        $rawmods = get_course_mods($courseid);
+    }
+    if (!$fullcheck && (empty($sections) || empty($rawmods))) {
+        // If either of the arrays is empty, no modules are displayed anyway.
+        return true;
+    }
+    $debuggingprefix = 'Failed integrity check for course ['.$courseid.']. ';
+
+    // First make sure that each module id appears in section sequences only once.
+    // If it appears in several section sequences the last section wins.
+    // If it appears twice in one section sequence, the first occurence wins.
+    $modsection = array();
+    foreach ($sections as $sectionid => $section) {
+        $sections[$sectionid]->newsequence = $section->sequence;
+        if (!empty($section->sequence)) {
+            $sequence = explode(",", $section->sequence);
+            $sequenceunique = array_unique($sequence);
+            if (count($sequenceunique) != count($sequence)) {
+                // Some course module id appears in this section sequence more than once.
+                ksort($sequenceunique); // Preserve initial order of modules.
+                $sequence = array_values($sequenceunique);
+                $sections[$sectionid]->newsequence = join(',', $sequence);
+                $messages[] = $debuggingprefix.'Sequence for course section ['.
+                        $sectionid.'] is "'.$sections[$sectionid]->sequence.'", must be "'.$sections[$sectionid]->newsequence.'"';
+            }
+            foreach ($sequence as $cmid) {
+                if (array_key_exists($cmid, $modsection) && isset($rawmods[$cmid])) {
+                    // Some course module id appears to be in more than one section's sequences.
+                    $wrongsectionid = $modsection[$cmid];
+                    $sections[$wrongsectionid]->newsequence = trim(preg_replace("/,$cmid,/", ',', ','.$sections[$wrongsectionid]->newsequence. ','), ',');
+                    $messages[] = $debuggingprefix.'Course module ['.$cmid.'] must be removed from sequence of section ['.
+                            $wrongsectionid.'] because it is also present in sequence of section ['.$sectionid.']';
+                }
+                $modsection[$cmid] = $sectionid;
+            }
+        }
+    }
+
+    // Add orphaned modules to their sections if they exist or to section 0 otherwise.
+    if ($fullcheck) {
+        foreach ($rawmods as $cmid => $mod) {
+            if (!isset($modsection[$cmid])) {
+                // This is a module that is not mentioned in course_section.sequence at all.
+                // Add it to the section $mod->section or to the last available section.
+                if ($mod->section && isset($sections[$mod->section])) {
+                    $modsection[$cmid] = $mod->section;
+                } else {
+                    $firstsection = reset($sections);
+                    $modsection[$cmid] = $firstsection->id;
+                }
+                $sections[$modsection[$cmid]]->newsequence = trim($sections[$modsection[$cmid]]->newsequence.','.$cmid, ',');
+                $messages[] = $debuggingprefix.'Course module ['.$cmid.'] is missing from sequence of section ['.
+                        $modsection[$cmid].']';
+            }
+        }
+        foreach ($modsection as $cmid => $sectionid) {
+            if (!isset($rawmods[$cmid])) {
+                // Section $sectionid refers to module id that does not exist.
+                $sections[$sectionid]->newsequence = trim(preg_replace("/,$cmid,/", ',', ','.$sections[$sectionid]->newsequence.','), ',');
+                $messages[] = $debuggingprefix.'Course module ['.$cmid.
+                        '] does not exist but is present in the sequence of section ['.$sectionid.']';
+            }
+        }
+    }
+
+    // Update changed sections.
+    if (!$checkonly && !empty($messages)) {
+        foreach ($sections as $sectionid => $section) {
+            if ($section->newsequence !== $section->sequence) {
+                $DB->update_record('course_sections', array('id' => $sectionid, 'sequence' => $section->newsequence));
+            }
+        }
+    }
+
+    // Now make sure that all modules point to the correct sections.
+    foreach ($rawmods as $cmid => $mod) {
+        if (isset($modsection[$cmid]) && $modsection[$cmid] != $mod->section) {
+            if (!$checkonly) {
+                $DB->update_record('course_modules', array('id' => $cmid, 'section' => $modsection[$cmid]));
+            }
+            $messages[] = $debuggingprefix.'Course module ['.$cmid.
+                    '] points to section ['.$mod->section.'] instead of ['.$modsection[$cmid].']';
+        }
+    }
+
+    return $messages;
+}
+
+/**
  * For a given course, returns an array of course activity objects
  * Each item in the array contains he following properties:
  */
@@ -885,7 +1016,14 @@ function get_array_of_activities($courseid) {
         return $mod; // always return array
     }
 
-    if ($sections = $DB->get_records("course_sections", array("course"=>$courseid), "section ASC")) {
+    if ($sections = $DB->get_records('course_sections', array('course' => $courseid), 'section ASC', 'id,section,sequence')) {
+        // First check and correct obvious mismatches between course_sections.sequence and course_modules.section.
+        if ($errormessages = course_integrity_check($courseid, $rawmods, $sections)) {
+            debugging(join('<br>', $errormessages));
+            $rawmods = get_course_mods($courseid);
+            $sections = $DB->get_records('course_sections', array('course' => $courseid), 'section ASC', 'id,section,sequence');
+        }
+        // Build array of activities.
        foreach ($sections as $section) {
            if (!empty($section->sequence)) {
                $sequence = explode(",", $section->sequence);
@@ -959,7 +1097,9 @@ function get_array_of_activities($courseid) {
                                    $mod[$seq]->extraclasses = $info->extraclasses;
                                }
                                if (!empty($info->iconurl)) {
-                                   $mod[$seq]->iconurl = $info->iconurl;
+                                   // Convert URL to string as it's easier to store. Also serialized object contains \0 byte and can not be written to Postgres DB.
+                                   $url = new moodle_url($info->iconurl);
+                                   $mod[$seq]->iconurl = $url->out(false);
                                }
                                if (!empty($info->onclick)) {
                                    $mod[$seq]->onclick = $info->onclick;
@@ -1479,7 +1619,7 @@ function set_coursemodule_visible($id, $visible) {
  * @since 2.5
  */
 function course_delete_module($cmid) {
-    global $CFG, $DB, $USER;
+    global $CFG, $DB;
 
     require_once($CFG->libdir.'/gradelib.php');
     require_once($CFG->dirroot.'/blog/lib.php');
@@ -1562,18 +1702,18 @@ function course_delete_module($cmid) {
             "Cannot delete the module $modulename (instance) from section.");
     }
 
-    // Trigger a mod_deleted event with information about this module.
-    $eventdata = new stdClass();
-    $eventdata->modulename = $modulename;
-    $eventdata->cmid       = $cm->id;
-    $eventdata->courseid   = $cm->course;
-    $eventdata->userid     = $USER->id;
-    events_trigger('mod_deleted', $eventdata);
-
-    add_to_log($cm->course, 'course', "delete mod",
-               "view.php?id=$cm->course",
-               "$modulename $cm->instance", $cm->id);
-
+    // Trigger event for course module delete action.
+    $event = \core\event\course_module_deleted::create(array(
+        'courseid' => $cm->course,
+        'context'  => $modcontext,
+        'objectid' => $cm->id,
+        'other'    => array(
+            'modulename' => $modulename,
+            'instanceid'   => $cm->instance,
+        )
+    ));
+    $event->add_record_snapshot('course_modules', $cm);
+    $event->trigger();
     rebuild_course_cache($cm->course, true);
 }
 
@@ -1735,35 +1875,44 @@ function reorder_sections($sections, $origin_position, $target_position) {
  * Move the module object $mod to the specified $section
  * If $beforemod exists then that is the module
  * before which $modid should be inserted
- * All parameters are objects
+ *
+ * @param stdClass|cm_info $mod
+ * @param stdClass|section_info $section
+ * @param int|stdClass $beforemod id or object with field id corresponding to the module
+ *     before which the module needs to be included. Null for inserting in the
+ *     end of the section
+ * @return int new value for module visibility (0 or 1)
  */
 function moveto_module($mod, $section, $beforemod=NULL) {
     global $OUTPUT, $DB;
 
-/// Remove original module from original section
+    // Current module visibility state - return value of this function.
+    $modvisible = $mod->visible;
+
+    // Remove original module from original section.
     if (! delete_mod_from_section($mod->id, $mod->section)) {
         echo $OUTPUT->notification("Could not delete module from existing section");
     }
 
-    // if moving to a hidden section then hide module
+    // If moving to a hidden section then hide module.
     if ($mod->section != $section->id) {
         if (!$section->visible && $mod->visible) {
-            // Set this in the object because it is sent as a response to ajax calls.
-            $mod->visible = 0;
+            // Module was visible but must become hidden after moving to hidden section.
+            $modvisible = 0;
             set_coursemodule_visible($mod->id, 0);
             // Set visibleold to 1 so module will be visible when section is made visible.
             $DB->set_field('course_modules', 'visibleold', 1, array('id' => $mod->id));
         }
         if ($section->visible && !$mod->visible) {
+            // Hidden module was moved to the visible section, restore the module visibility from visibleold.
             set_coursemodule_visible($mod->id, $mod->visibleold);
-            // Set this in the object because it is sent as a response to ajax calls.
-            $mod->visible = $mod->visibleold;
+            $modvisible = $mod->visibleold;
         }
     }
 
-/// Add the module into the new section
+    // Add the module into the new section.
     course_add_cm_to_section($section->course, $mod->id, $section->section, $beforemod);
-    return true;
+    return $modvisible;
 }
 
 /**
@@ -1919,18 +2068,13 @@ function course_get_cm_edit_actions(cm_info $mod, $indent = -1, $sr = null) {
 
     // Groupmode.
     if ($hasmanageactivities and plugin_supports('mod', $mod->modname, FEATURE_GROUPS, 0)) {
-        if ($mod->coursegroupmodeforce) {
-            $modgroupmode = $mod->coursegroupmode;
-        } else {
-            $modgroupmode = $mod->groupmode;
-        }
-        if ($modgroupmode == SEPARATEGROUPS) {
+        if ($mod->effectivegroupmode == SEPARATEGROUPS) {
             $nextgroupmode = VISIBLEGROUPS;
             $grouptitle = $str->groupsseparate;
             $forcedgrouptitle = $str->forcedgroupsseparate;
             $actionname = 'groupsseparate';
             $groupimage = 't/groups';
-        } else if ($modgroupmode == VISIBLEGROUPS) {
+        } else if ($mod->effectivegroupmode == VISIBLEGROUPS) {
             $nextgroupmode = NOGROUPS;
             $grouptitle = $str->groupsvisible;
             $forcedgrouptitle = $str->forcedgroupsvisible;
@@ -1951,7 +2095,7 @@ function course_get_cm_edit_actions(cm_info $mod, $indent = -1, $sr = null) {
                 array('class' => 'editing_'. $actionname, 'data-action' => $actionname, 'data-nextgroupmode' => $nextgroupmode)
             );
         } else {
-            $actions[$actionname] = new pix_icon($groupimage, $forcedgrouptitle, 'moodle', array('title' => '', 'class' => 'iconsmall'));
+            $actions[$actionname] = new pix_icon($groupimage, $forcedgrouptitle, 'moodle', array('class' => 'iconsmall'));
         }
     }
 
@@ -2026,14 +2170,14 @@ function course_allowed_module($course, $modname) {
  * @return bool success
  */
 function move_courses($courseids, $categoryid) {
-    global $CFG, $DB, $OUTPUT;
+    global $DB;
 
     if (empty($courseids)) {
-        // nothing to do
+        // Nothing to do.
         return;
     }
 
-    if (!$category = $DB->get_record('course_categories', array('id'=>$categoryid))) {
+    if (!$category = $DB->get_record('course_categories', array('id' => $categoryid))) {
         return false;
     }
 
@@ -2041,24 +2185,34 @@ function move_courses($courseids, $categoryid) {
     $newparent = context_coursecat::instance($category->id);
     $i = 1;
 
-    foreach ($courseids as $courseid) {
-        if ($course = $DB->get_record('course', array('id'=>$courseid), 'id, category')) {
-            $course = new stdClass();
-            $course->id = $courseid;
-            $course->category  = $category->id;
-            $course->sortorder = $category->sortorder + MAX_COURSES_IN_CATEGORY - $i++;
-            if ($category->visible == 0) {
-                // hide the course when moving into hidden category,
-                // do not update the visibleold flag - we want to get to previous state if somebody unhides the category
-                $course->visible = 0;
-            }
-
-            $DB->update_record('course', $course);
-            add_to_log($course->id, "course", "move", "edit.php?id=$course->id", $course->id);
-
-            $context   = context_course::instance($course->id);
-            $context->update_moved($newparent);
+    list($where, $params) = $DB->get_in_or_equal($courseids);
+    $dbcourses = $DB->get_records_select('course', 'id ' . $where, $params, '', 'id, category, shortname, fullname');
+    foreach ($dbcourses as $dbcourse) {
+        $course = new stdClass();
+        $course->id = $dbcourse->id;
+        $course->category  = $category->id;
+        $course->sortorder = $category->sortorder + MAX_COURSES_IN_CATEGORY - $i++;
+        if ($category->visible == 0) {
+            // Hide the course when moving into hidden category, do not update the visibleold flag - we want to get
+            // to previous state if somebody unhides the category.
+            $course->visible = 0;
         }
+
+        $DB->update_record('course', $course);
+
+        // Update context, so it can be passed to event.
+        $context = context_course::instance($course->id);
+        $context->update_moved($newparent);
+
+        // Trigger a course updated event.
+        $event = \core\event\course_updated::create(array(
+            'objectid' => $course->id,
+            'context' => context_course::instance($course->id),
+            'other' => array('shortname' => $dbcourse->shortname,
+                             'fullname' => $dbcourse->fullname)
+        ));
+        $event->set_legacy_logdata(array($course->id, 'course', 'move', 'edit.php?id=' . $course->id, $course->id));
+        $event->trigger();
     }
     fix_course_sortorder();
     cache_helper::purge_by_event('changesincourse');
@@ -2229,22 +2383,22 @@ function course_overviewfiles_options($course) {
  * @return object new course instance
  */
 function create_course($data, $editoroptions = NULL) {
-    global $CFG, $DB;
+    global $DB;
 
     //check the categoryid - must be given for all new courses
     $category = $DB->get_record('course_categories', array('id'=>$data->category), '*', MUST_EXIST);
 
-    //check if the shortname already exist
+    // Check if the shortname already exists.
     if (!empty($data->shortname)) {
         if ($DB->record_exists('course', array('shortname' => $data->shortname))) {
-            throw new moodle_exception('shortnametaken');
+            throw new moodle_exception('shortnametaken', '', '', $data->shortname);
         }
     }
 
-    //check if the id number already exist
+    // Check if the idnumber already exists.
     if (!empty($data->idnumber)) {
         if ($DB->record_exists('course', array('idnumber' => $data->idnumber))) {
-            throw new moodle_exception('idnumbertaken');
+            throw new moodle_exception('courseidnumbertaken', '', '', $data->idnumber);
         }
     }
 
@@ -2304,10 +2458,14 @@ function create_course($data, $editoroptions = NULL) {
     // set up enrolments
     enrol_course_updated(true, $course, $data);
 
-    add_to_log(SITEID, 'course', 'new', 'view.php?id='.$course->id, $data->fullname.' (ID '.$course->id.')');
-
-    // Trigger events
-    events_trigger('course_created', $course);
+    // Trigger a course created event.
+    $event = \core\event\course_created::create(array(
+        'objectid' => $course->id,
+        'context' => context_course::instance($course->id),
+        'other' => array('shortname' => $course->shortname,
+                         'fullname' => $course->fullname)
+    ));
+    $event->trigger();
 
     return $course;
 }
@@ -2323,7 +2481,7 @@ function create_course($data, $editoroptions = NULL) {
  * @return void
  */
 function update_course($data, $editoroptions = NULL) {
-    global $CFG, $DB;
+    global $DB;
 
     $data->timemodified = time();
 
@@ -2335,6 +2493,20 @@ function update_course($data, $editoroptions = NULL) {
     }
     if ($overviewfilesoptions = course_overviewfiles_options($data->id)) {
         $data = file_postupdate_standard_filemanager($data, 'overviewfiles', $overviewfilesoptions, $context, 'course', 'overviewfiles', 0);
+    }
+
+    // Check we don't have a duplicate shortname.
+    if (!empty($data->shortname) && $oldcourse->shortname != $data->shortname) {
+        if ($DB->record_exists('course', array('shortname' => $data->shortname))) {
+            throw new moodle_exception('shortnametaken', '', '', $data->shortname);
+        }
+    }
+
+    // Check we don't have a duplicate idnumber.
+    if (!empty($data->idnumber) && $oldcourse->idnumber != $data->idnumber) {
+        if ($DB->record_exists('course', array('idnumber' => $data->idnumber))) {
+            throw new moodle_exception('courseidnumbertaken', '', '', $data->idnumber);
+        }
     }
 
     if (!isset($data->category) or empty($data->category)) {
@@ -2376,8 +2548,11 @@ function update_course($data, $editoroptions = NULL) {
         $newparent = context_coursecat::instance($course->category);
         $context->update_moved($newparent);
     }
+    $fixcoursesortorder = $movecat || (isset($data->sortorder) && ($oldcourse->sortorder != $data->sortorder));
+    if ($fixcoursesortorder) {
+        fix_course_sortorder();
+    }
 
-    fix_course_sortorder();
     // purge appropriate caches in case fix_course_sortorder() did not change anything
     cache_helper::purge_by_event('changesincourse');
     if ($changesincoursecat) {
@@ -2393,10 +2568,16 @@ function update_course($data, $editoroptions = NULL) {
     // update enrol settings
     enrol_course_updated(false, $course, $data);
 
-    add_to_log($course->id, "course", "update", "edit.php?id=$course->id", $course->id);
+    // Trigger a course updated event.
+    $event = \core\event\course_updated::create(array(
+        'objectid' => $course->id,
+        'context' => context_course::instance($course->id),
+        'other' => array('shortname' => $course->shortname,
+                         'fullname' => $course->fullname)
+    ));
 
-    // Trigger events
-    events_trigger('course_updated', $course);
+    $event->set_legacy_logdata(array($course->id, 'course', 'update', 'edit.php?id=' . $course->id, $course->id));
+    $event->trigger();
 
     if ($oldcourse->format !== $course->format) {
         // Remove all options stored for the previous format
@@ -2898,7 +3079,7 @@ function course_ajax_enabled($course) {
  * @return bool
  */
 function include_course_ajax($course, $usedmodules = array(), $enabledmodules = null, $config = null) {
-    global $PAGE, $SITE;
+    global $CFG, $PAGE, $SITE;
 
     // Ensure that ajax should be included
     if (!course_ajax_enabled($course)) {
@@ -2977,6 +3158,9 @@ function include_course_ajax($course, $usedmodules = array(), $enabledmodules = 
             'markedthistopic',
             'move',
             'movesection',
+            'movecontent',
+            'tocontent',
+            'emptydragdropregion'
         ), 'moodle');
 
     // Include format-specific strings
@@ -2993,6 +3177,7 @@ function include_course_ajax($course, $usedmodules = array(), $enabledmodules = 
     }
 
     // Load drag and drop upload AJAX.
+    require_once($CFG->dirroot.'/course/dnduploadlib.php');
     dndupload_add_to_course($course, $enabledmodules);
 
     return true;

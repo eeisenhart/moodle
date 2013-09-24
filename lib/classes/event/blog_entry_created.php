@@ -16,6 +16,8 @@
 
 namespace core\event;
 
+defined('MOODLE_INTERNAL') || die();
+
 /**
  * Event for when a new blog entry is added..
  *
@@ -45,8 +47,7 @@ class blog_entry_created extends \core\event\base {
         $this->context = \context_system::instance();
         $this->data['objecttable'] = 'post';
         $this->data['crud'] = 'c';
-        // TODO: MDL-37658 set level.
-        $this->data['level'] = 50;
+        $this->data['level'] = self::LEVEL_PARTICIPATING;
     }
 
     /**
@@ -108,6 +109,7 @@ class blog_entry_created extends \core\event\base {
      * @return array of parameters to be passed to legacy add_to_log() function.
      */
     protected function get_legacy_logdata() {
-        return array (SITEID, 'blog', 'add', 'index.php?userid='.$this->userid.'&entryid='.$this->objectid, $this->customobject->subject);
+        return array (SITEID, 'blog', 'add', 'index.php?userid=' . $this->relateduserid . '&entryid=' . $this->objectid,
+                $this->customobject->subject);
     }
 }

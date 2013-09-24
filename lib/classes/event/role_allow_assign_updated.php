@@ -16,6 +16,8 @@
 
 namespace core\event;
 
+defined('MOODLE_INTERNAL') || die();
+
 /**
  * Event when role allow assignments is updated.
  *
@@ -30,8 +32,7 @@ class role_allow_assign_updated extends base {
      */
     protected function init() {
         $this->data['crud'] = 'u';
-        // TODO: MDL-41040 set level.
-        $this->data['level'] = 50;
+        $this->data['level'] = self::LEVEL_OTHER;
     }
 
     /**

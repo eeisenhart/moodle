@@ -83,9 +83,6 @@ if ($viewing != MESSAGE_VIEW_UNREAD_MESSAGES) {
 
 $PAGE->set_url($url);
 
-$navigationurl = new moodle_url('/message/index.php', array('user1' => $user1id));
-navigation_node::override_active_url($navigationurl);
-
 // Disable message notification popups while the user is viewing their messages
 $PAGE->set_popup_notification_allowed(false);
 
@@ -106,13 +103,15 @@ unset($user1id);
 
 $user2 = null;
 if (!empty($user2id)) {
-    $user2 = $DB->get_record("user", array("id" => $user2id));
+    $user2 = core_user::get_user($user2id);
     if (!$user2) {
         print_error('invaliduserid');
     }
 }
 unset($user2id);
 
+$user2realuser = !empty($user2) && core_user::is_real_user($user2->id);
+$showactionlinks = $showactionlinks && $user2realuser;
 $systemcontext = context_system::instance();
 
 if (!empty($user2) && $user1->id == $user2->id) {
@@ -125,9 +124,21 @@ if (!message_current_user_is_involved($user1, $user2) && !has_capability('moodle
     print_error('accessdenied','admin');
 }
 
-$PAGE->set_context(context_user::instance($user1->id));
-$PAGE->set_pagelayout('course');
-$PAGE->navigation->extend_for_user($user1);
+if (substr($viewing, 0, 7) == MESSAGE_VIEW_COURSE) {
+    $courseid = intval(substr($viewing, 7));
+    require_login($courseid);
+    require_capability('moodle/course:viewparticipants', context_course::instance($courseid));
+    $PAGE->set_pagelayout('incourse');
+} else {
+    $PAGE->set_pagelayout('course');
+    $PAGE->set_context(context_user::instance($user1->id));
+}
+if (!empty($user1->id) && $user1->id != $USER->id) {
+    $PAGE->navigation->extend_for_user($user1);
+}
+if (!empty($user2->id) && $user2->id != $USER->id) {
+    $PAGE->navigation->extend_for_user($user2);
+}
 
 /// Process any contact maintenance requests there may be
 if ($addcontact and confirm_sesskey()) {
@@ -150,7 +161,7 @@ if ($unblockcontact and confirm_sesskey()) {
 
 //was a message sent? Do NOT allow someone looking at someone else's messages to send them.
 $messageerror = null;
-if ($currentuser && !empty($user2) && has_capability('moodle/site:sendmessage', $systemcontext)) {
+if ($currentuser && $user2realuser && has_capability('moodle/site:sendmessage', $systemcontext)) {
     // Check that the user is not blocking us!!
     if ($contact = $DB->get_record('message_contacts', array('userid' => $user2->id, 'contactid' => $user1->id))) {
         if ($contact->blocked and !has_capability('moodle/site:readallmessages', $systemcontext)) {
@@ -169,6 +180,7 @@ if ($currentuser && !empty($user2) && has_capability('moodle/site:sendmessage', 
         $mform = new send_form();
         $defaultmessage = new stdClass;
         $defaultmessage->id = $user2->id;
+        $defaultmessage->viewing = $viewing;
         $defaultmessage->message = '';
 
         //Check if the current user has sent a message
@@ -189,7 +201,7 @@ if ($currentuser && !empty($user2) && has_capability('moodle/site:sendmessage', 
 }
 
 $strmessages = get_string('messages', 'message');
-if (!empty($user2)) {
+if ($user2realuser) {
     $user2fullname = fullname($user2);
 
     $PAGE->set_title("$strmessages: $user2fullname");
@@ -209,7 +221,7 @@ $countunreadtotal = 0; //count of unread messages from all users
 
 //we're dealing with unread messages early so the contact list will accurately reflect what is read/unread
 $viewingnewmessages = false;
-if (!empty($user2)) {
+if ($user2realuser) {
     //are there any unread messages from $user2
     $countunread = message_count_unread_messages($user1, $user2);
     if ($countunread>0) {
@@ -237,7 +249,7 @@ list($onlinecontacts, $offlinecontacts, $strangers) = message_get_contacts($user
 message_print_contact_selector($countunreadtotal, $viewing, $user1, $user2, $blockedusers, $onlinecontacts, $offlinecontacts, $strangers, $showactionlinks, $page);
 
 echo html_writer::start_tag('div', array('class' => 'messagearea mdl-align'));
-    if (!empty($user2)) {
+    if ($user2realuser) {
 
         echo html_writer::start_tag('div', array('class' => 'mdl-left messagehistory'));
 
@@ -313,6 +325,7 @@ echo html_writer::start_tag('div', array('class' => 'messagearea mdl-align'));
                     $mform = new send_form();
                     $defaultmessage = new stdClass;
                     $defaultmessage->id = $user2->id;
+                    $defaultmessage->viewing = $viewing;
                     $defaultmessage->message = '';
                     //$defaultmessage->messageformat = FORMAT_MOODLE;
                     $mform->set_data($defaultmessage);

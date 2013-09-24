@@ -141,6 +141,29 @@ a.autolink.glossary:hover {
 .jsenabled .collapsed .collapsibleregioninner {
     visibility: hidden;
 }
+.collapsible-actions {
+    display: none;
+    text-align: right;
+}
+.dir-rtl .collapsible-actions {
+    text-align: left;
+}
+.jsenabled .collapsible-actions {
+    display: block;
+}
+.collapsible-actions .collapseexpand {
+    padding-left: 20px;
+    background: url([[pix:t/collapsed]]) 2px center no-repeat;
+}
+.dir-rtl .collapsible-actions .collapseexpand {
+    padding-right: 20px;
+    padding-left: 0;
+    background: url([[pix:t/collapsed_rtl]]) right center no-repeat;
+}
+.collapsible-actions .collapse-all,
+.dir-rtl .collapsible-actions .collapse-all {
+    background-image: url([[pix:t/expanded]]);
+}
 .yui-overlay .yui-widget-bd {
     background-color: #FFEE69;
     border: 1px solid #A6982B;
@@ -200,6 +223,14 @@ img.iconhelp, .helplink img {
     padding-left: 3px;
     vertical-align: text-bottom;
     width: 16px;
+}
+h1 img.iconhelp, h1 img.icon,
+h2 img.iconhelp, h2 img.icon,
+h3 img.iconhelp, h3 img.icon,
+h4 img.iconhelp, h4 img.icon,
+h5 img.iconhelp, h5 img.icon,
+h6 img.iconhelp, h6 img.icon {
+  vertical-align: middle;
 }
 .dir-rtl img.iconhelp, .dir-rtl .helplink img {
     padding-right: 3px;
@@ -294,9 +325,7 @@ form.popupform div {
     vertical-align: text-bottom;
     margin: 0 0.3em;
 }
-.main img {
-    vertical-align: middle;
-}
+
 /** The 1-pixel padding is there to avoid phantom scroll bars on OS X (FF, Safari and Chrome)**/
 .no-overflow {
     overflow: auto;
@@ -387,6 +416,11 @@ a.skip:active {
 }
 .groupmanagementtable #buttonscell {
     width: 16%;
+}
+.groupmanagementtable #buttonscell p.arrow_button input {
+    width: auto;
+    min-width: 80%;
+    margin: 0 auto;
 }
 .groupmanagementtable #removeselect_wrapper,
 .groupmanagementtable #addselect_wrapper {
@@ -1064,6 +1098,9 @@ body.tag .managelink {
 #page-enrol-users .enrol_user_buttons {
     float: right;
 }
+#page-enrol-users.dir-rtl .enrol_user_buttons {
+    float: left;
+}
 #page-enrol-users .enrol_user_buttons .enrolusersbutton {
     margin-left: 1em;
     display: inline;
@@ -1383,12 +1420,17 @@ audio.mediaplugin_html5audio {
 .no-scrolling {
     overflow: hidden;
 }
-.moodle-dialogue-fullscreen {
+.moodle-dialogue-base .moodle-dialogue-fullscreen {
     left: 0px;
     top: 0px;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
+    right: 0px;
+    bottom: -50px;
+    position: fixed;
+}
+.moodle-dialogue-base .moodle-dialogue-fullscreen .closebutton {
+    width: 28px;
+    height: 16px;
+    background-size: 100%;
 }
 .moodle-dialogue-base .moodle-dialogue {
     padding: 0;
@@ -1396,6 +1438,7 @@ audio.mediaplugin_html5audio {
     background: none;
     border: none;
     z-index: 600;
+    outline: #000 dotted 0;
 }
 .moodle-dialogue-base .moodle-dialogue-wrap {
     margin-top: -3px;
@@ -1463,10 +1506,13 @@ audio.mediaplugin_html5audio {
     font-size: 16px;
 }
 
-.moodle-dialogue-base .moodle-dialogue-fullscreen,
-.moodle-dialogue-fullscreen .moodle-dialogue-content {
-    width: 100%;
-    height: 100%;
+.moodle-dialogue-base .moodle-dialogue-fullscreen .moodle-dialogue-content {
+    overflow: auto;
+    position: absolute;
+    top: 0px;
+    bottom: 50px;
+    left: 0px;
+    right: 0px;
     margin: 0px;
     border: 0px;
 }
@@ -1960,9 +2006,6 @@ div.badge .expireimage {
 }
 
 .jsenabled {
-    .block .editing_move {
-        display:none;
-    }
     .moodle-actionmenu[data-enhance] {
         display: block;
         .menu {
@@ -2094,4 +2137,21 @@ div.badge .expireimage {
     .block .moodle-actionmenu {
         text-align: right;
     }
+}
+
+ul.dragdrop-keyboard-drag li {
+    list-style-type: none;
+}
+
+.block-control-actions .moodle-core-dragdrop-draghandle img {
+    width: 12px;
+    height: 12px;
+}
+
+a.disabled:hover,
+a.disabled {
+    text-decoration: none;
+    cursor: default;
+    font-style: italic;
+    color: #808080;
 }

@@ -262,6 +262,13 @@ function useredit_shared_definition(&$mform, $editoroptions = null, $filemanager
     $mform->addElement('select', 'lang', get_string('preferredlanguage'), get_string_manager()->get_list_of_translations());
     $mform->setDefault('lang', $CFG->lang);
 
+    // Multi-Calendar Support - see MDL-18375.
+    $calendartypes = \core_calendar\type_factory::get_list_of_calendar_types();
+    // We do not want to show this option unless there is more than one calendar type to display.
+    if (count($calendartypes) > 1) {
+        $mform->addElement('select', 'calendartype', get_string('preferredcalendar', 'calendar'), $calendartypes);
+    }
+
     if (!empty($CFG->allowuserthemes)) {
         $choices = array();
         $choices[''] = get_string('default');
@@ -340,10 +347,10 @@ function useredit_shared_definition(&$mform, $editoroptions = null, $filemanager
     $mform->addElement('text', 'idnumber', get_string('idnumber'), 'maxlength="255" size="25"');
     $mform->setType('idnumber', PARAM_NOTAGS);
 
-    $mform->addElement('text', 'institution', get_string('institution'), 'maxlength="40" size="25"');
+    $mform->addElement('text', 'institution', get_string('institution'), 'maxlength="255" size="25"');
     $mform->setType('institution', PARAM_TEXT);
 
-    $mform->addElement('text', 'department', get_string('department'), 'maxlength="30" size="25"');
+    $mform->addElement('text', 'department', get_string('department'), 'maxlength="255" size="25"');
     $mform->setType('department', PARAM_TEXT);
 
     $mform->addElement('text', 'phone1', get_string('phone'), 'maxlength="20" size="25"');
@@ -352,7 +359,7 @@ function useredit_shared_definition(&$mform, $editoroptions = null, $filemanager
     $mform->addElement('text', 'phone2', get_string('phone2'), 'maxlength="20" size="25"');
     $mform->setType('phone2', PARAM_NOTAGS);
 
-    $mform->addElement('text', 'address', get_string('address'), 'maxlength="70" size="25"');
+    $mform->addElement('text', 'address', get_string('address'), 'maxlength="255" size="25"');
     $mform->setType('address', PARAM_TEXT);
 
 

@@ -27,7 +27,6 @@ defined('MOODLE_INTERNAL') || die();
 require_once($CFG->libdir.'/filelib.php');
 require_once($CFG->libdir.'/eventslib.php');
 require_once($CFG->dirroot.'/user/selector/lib.php');
-require_once($CFG->dirroot.'/mod/forum/post_form.php');
 
 /// CONSTANTS ///////////////////////////////////////////////////////////
 
@@ -3491,9 +3490,10 @@ function forum_print_post($post, $discussion, $forum, &$cm, $course, $ownpost=fa
     $options->trusted = $post->messagetrust;
     $options->context = $modcontext;
     if ($shortenpost) {
-        // Prepare shortened version
+        // Prepare shortened version by filtering the text then shortening it.
         $postclass    = 'shortenedpost';
-        $postcontent  = format_text(forum_shorten_post($post->message), $post->messageformat, $options, $course->id);
+        $postcontent  = format_text($post->message, $post->messageformat, $options);
+        $postcontent  = shorten_text($postcontent, $CFG->forum_shortpost);
         $postcontent .= html_writer::link($discussionlink, get_string('readtherest', 'forum'));
         $postcontent .= html_writer::tag('div', '('.get_string('numwords', 'moodle', count_words($post->message)).')',
             array('class'=>'post-word-count'));
@@ -3829,61 +3829,24 @@ function forum_print_discussion_header(&$post, $forum, $group=-1, $datestring=""
 
 }
 
-
 /**
+ * This function is now deprecated. Use shorten_text($message, $CFG->forum_shortpost) instead.
+ *
  * Given a post object that we already know has a long message
  * this function truncates the message nicely to the first
  * sane place between $CFG->forum_longpost and $CFG->forum_shortpost
  *
+ * @deprecated since Moodle 2.6
+ * @see shorten_text()
+ * @todo finalise deprecation in 2.8 in MDL-40851
  * @global object
  * @param string $message
  * @return string
  */
 function forum_shorten_post($message) {
-
    global $CFG;
-
-   $i = 0;
-   $tag = false;
-   $length = strlen($message);
-   $count = 0;
-   $stopzone = false;
-   $truncate = 0;
-
-   for ($i=0; $i<$length; $i++) {
-       $char = $message[$i];
-
-       switch ($char) {
-           case "<":
-               $tag = true;
-               break;
-           case ">":
-               $tag = false;
-               break;
-           default:
-               if (!$tag) {
-                   if ($stopzone) {
-                       if ($char == ".") {
-                           $truncate = $i+1;
-                           break 2;
-                       }
-                   }
-                   $count++;
-               }
-               break;
-       }
-       if (!$stopzone) {
-           if ($count > $CFG->forum_shortpost) {
-               $stopzone = true;
-           }
-       }
-   }
-
-   if (!$truncate) {
-       $truncate = $i;
-   }
-
-   return substr($message, 0, $truncate);
+   debugging('forum_shorten_post() is deprecated since Moodle 2.6. Please use shorten_text($message, $CFG->forum_shortpost) instead.', DEBUG_DEVELOPER);
+   return shorten_text($message, $CFG->forum_shortpost);
 }
 
 /**
@@ -4371,7 +4334,7 @@ function forum_add_new_post($post, $mform, &$message) {
 
     $post->id = $DB->insert_record("forum_posts", $post);
     $post->message = file_save_draft_area_files($post->itemid, $context->id, 'mod_forum', 'post', $post->id,
-            mod_forum_post_form::editor_options(), $post->message);
+            mod_forum_post_form::editor_options($context, null), $post->message);
     $DB->set_field('forum_posts', 'message', $post->message, array('id'=>$post->id));
     forum_add_attachment($post, $forum, $cm, $mform, $message);
 
@@ -4421,7 +4384,7 @@ function forum_update_post($post, $mform, &$message) {
         $discussion->timeend   = $post->timeend;
     }
     $post->message = file_save_draft_area_files($post->itemid, $context->id, 'mod_forum', 'post', $post->id,
-            mod_forum_post_form::editor_options(), $post->message);
+            mod_forum_post_form::editor_options($context, $post->id), $post->message);
     $DB->set_field('forum_posts', 'message', $post->message, array('id'=>$post->id));
 
     $DB->update_record('forum_discussions', $discussion);
@@ -4485,7 +4448,7 @@ function forum_add_discussion($discussion, $mform=null, $unused=null, $userid=nu
     if (!empty($cm->id) && !empty($discussion->itemid)) {   // In "single simple discussions" this may not exist yet
         $context = context_module::instance($cm->id);
         $text = file_save_draft_area_files($discussion->itemid, $context->id, 'mod_forum', 'post', $post->id,
-                mod_forum_post_form::editor_options(), $post->message);
+                mod_forum_post_form::editor_options($context, null), $post->message);
         $DB->set_field('forum_posts', 'message', $text, array('id'=>$post->id));
     }
 
@@ -6290,28 +6253,6 @@ function forum_user_role_assigned($cp) {
     }
 }
 
-/**
- * This function gets run whenever user is unenrolled from course
- *
- * @param stdClass $cp
- * @return void
- */
-function forum_user_unenrolled($cp) {
-    global $DB;
-
-    // NOTE: this has to be as fast as possible!
-
-    if ($cp->lastenrol) {
-        $params = array('userid'=>$cp->userid, 'courseid'=>$cp->courseid);
-        $forumselect = "IN (SELECT f.id FROM {forum} f WHERE f.course = :courseid)";
-
-        $DB->delete_records_select('forum_digests',       "userid = :userid AND forum $forumselect", $params);
-        $DB->delete_records_select('forum_subscriptions', "userid = :userid AND forum $forumselect", $params);
-        $DB->delete_records_select('forum_track_prefs',   "userid = :userid AND forumid $forumselect", $params);
-        $DB->delete_records_select('forum_read',          "userid = :userid AND forumid $forumselect", $params);
-    }
-}
-
 // Functions to do with read tracking.
 
 /**
@@ -8105,15 +8046,17 @@ function forum_get_courses_user_posted_in($user, $discussionsonly = false, $incl
     // table and join to the userid there. If we are looking for posts then we need
     // to join to the forum_posts table.
     if (!$discussionsonly) {
-        $joinsql = 'JOIN {forum_discussions} fd ON fd.course = c.id
-                    JOIN {forum_posts} fp ON fp.discussion = fd.id';
-        $wheresql = 'fp.userid = :userid';
-        $params = array('userid' => $user->id);
+        $subquery = "(SELECT DISTINCT fd.course
+                         FROM {forum_discussions} fd
+                         JOIN {forum_posts} fp ON fp.discussion = fd.id
+                        WHERE fp.userid = :userid )";
     } else {
-        $joinsql = 'JOIN {forum_discussions} fd ON fd.course = c.id';
-        $wheresql = 'fd.userid = :userid';
-        $params = array('userid' => $user->id);
+        $subquery= "(SELECT DISTINCT fd.course
+                         FROM {forum_discussions} fd
+                        WHERE fd.userid = :userid )";
     }
+
+    $params = array('userid' => $user->id);
 
     // Join to the context table so that we can preload contexts if required.
     if ($includecontexts) {
@@ -8127,14 +8070,13 @@ function forum_get_courses_user_posted_in($user, $discussionsonly = false, $incl
 
     // Now we need to get all of the courses to search.
     // All courses where the user has posted within a forum will be returned.
-    $sql = "SELECT DISTINCT c.* $ctxselect
+    $sql = "SELECT c.* $ctxselect
             FROM {course} c
-            $joinsql
             $ctxjoin
-            WHERE $wheresql";
+            WHERE c.id IN ($subquery)";
     $courses = $DB->get_records_sql($sql, $params, $limitfrom, $limitnum);
     if ($includecontexts) {
-        array_map('context_instance_preload', $courses);
+        array_map('context_helper::preload_from_record', $courses);
     }
     return $courses;
 }

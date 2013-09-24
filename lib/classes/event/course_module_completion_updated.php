@@ -16,6 +16,8 @@
 
 namespace core\event;
 
+defined('MOODLE_INTERNAL') || die();
+
 /**
  * Event when course module completion is updated.
  *
@@ -31,8 +33,7 @@ class course_module_completion_updated extends base {
     protected function init() {
         $this->data['objecttable'] = 'course_modules_completion';
         $this->data['crud'] = 'u';
-        // TODO: MDL-37658 set level.
-        $this->data['level'] = 50;
+        $this->data['level'] = self::LEVEL_PARTICIPATING;
     }
 
     /**
@@ -41,7 +42,7 @@ class course_module_completion_updated extends base {
      * @return string
      */
     public static function get_name() {
-        return new get_string('eventcoursemodulecompletionupdated', 'core_completion');
+        return get_string('eventcoursemodulecompletionupdated', 'core_completion');
     }
 
     /**
