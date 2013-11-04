@@ -320,9 +320,9 @@ if (!isset($CFG->umaskpermissions)) {
 }
 umask($CFG->umaskpermissions);
 
-// exact version of currently used yui2 and 3 library
+// Exact version of currently used yui2 and 3 library.
 $CFG->yui2version = '2.9.0';
-$CFG->yui3version = '3.9.1';
+$CFG->yui3version = '3.13.0';
 
 // Store settings from config.php in array in $CFG - we can use it later to detect problems and overrides.
 if (!isset($CFG->config_php_settings)) {
@@ -372,9 +372,7 @@ if (defined('ABORT_AFTER_CONFIG')) {
 // Early profiling start, based exclusively on config.php $CFG settings
 if (!empty($CFG->earlyprofilingenabled)) {
     require_once($CFG->libdir . '/xhprof/xhprof_moodle.php');
-    if (profiling_start()) {
-        register_shutdown_function('profiling_stop');
-    }
+    profiling_start();
 }
 
 /**
@@ -622,6 +620,9 @@ if (!isset($CFG->debugdisplay)) {
     ini_set('display_errors', '1');
 }
 
+// Register our shutdown manager, do NOT use register_shutdown_function().
+core_shutdown_manager::initialize();
+
 // Verify upgrade is not running unless we are in a script that needs to execute in any case
 if (!defined('NO_UPGRADE_CHECK') and isset($CFG->upgraderunning)) {
     if ($CFG->upgraderunning < time()) {
@@ -640,11 +641,6 @@ if (!empty($CFG->logsql)) {
 // it helps a lot when using large complex OOP structures such as in amos or gradebook
 if (function_exists('gc_enable')) {
     gc_enable();
-}
-
-// Register default shutdown tasks - such as Apache memory release helper, perf logging, etc.
-if (function_exists('register_shutdown_function')) {
-    register_shutdown_function('moodle_request_shutdown');
 }
 
 // detect unsupported upgrade jump as soon as possible - do not change anything, do not use system functions
@@ -728,7 +724,7 @@ if (!defined('SYSCONTEXTID')) {
 // Defining the site - aka frontpage course
 try {
     $SITE = get_site();
-} catch (dml_exception $e) {
+} catch (moodle_exception $e) {
     $SITE = null;
     if (empty($CFG->version)) {
         $SITE = new stdClass();
@@ -760,17 +756,20 @@ if (CLI_SCRIPT) {
     }
 }
 
-// start session and prepare global $SESSION, $USER
-session_get_instance();
-$SESSION = &$_SESSION['SESSION'];
-$USER    = &$_SESSION['USER'];
+// Start session and prepare global $SESSION, $USER.
+if (empty($CFG->sessiontimeout)) {
+    $CFG->sessiontimeout = 7200;
+}
+\core\session\manager::start();
+if (!PHPUNIT_TEST and !defined('BEHAT_TEST')) {
+    $SESSION =& $_SESSION['SESSION'];
+    $USER    =& $_SESSION['USER'];
+}
 
 // Late profiling, only happening if early one wasn't started
 if (!empty($CFG->profilingenabled)) {
     require_once($CFG->libdir . '/xhprof/xhprof_moodle.php');
-    if (profiling_start()) {
-        register_shutdown_function('profiling_stop');
-    }
+    profiling_start();
 }
 
 // Process theme change in the URL.
@@ -795,7 +794,7 @@ unset($urlthemename);
 
 // Ensure a valid theme is set.
 if (!isset($CFG->theme)) {
-    $CFG->theme = 'standardwhite';
+    $CFG->theme = 'standard';
 }
 
 // Set language/locale of printed times.  If user has chosen a language that
@@ -839,7 +838,7 @@ unset($classname);
 
 
 if (!empty($CFG->debugvalidators) and !empty($CFG->guestloginbutton)) {
-    if ($CFG->theme == 'standard' or $CFG->theme == 'standardwhite') {    // Temporary measure to help with XHTML validation
+    if ($CFG->theme == 'standard') {    // Temporary measure to help with XHTML validation
         if (isset($_SERVER['HTTP_USER_AGENT']) and empty($USER->id)) {      // Allow W3CValidator in as user called w3cvalidator (or guest)
             if ((strpos($_SERVER['HTTP_USER_AGENT'], 'W3C_Validator') !== false) or
                 (strpos($_SERVER['HTTP_USER_AGENT'], 'Cynthia') !== false )) {
@@ -848,7 +847,7 @@ if (!empty($CFG->debugvalidators) and !empty($CFG->guestloginbutton)) {
                 } else {
                     $user = guest_user();
                 }
-                session_set_user($user);
+                \core\session\manager::set_user($user);
             }
         }
     }
@@ -867,8 +866,8 @@ if ($USER && function_exists('apache_note')
         $apachelog_name = clean_filename($USER->firstname . " " .
                                          $USER->lastname);
     }
-    if (session_is_loggedinas()) {
-        $realuser = session_get_realuser();
+    if (\core\session\manager::is_loggedinas()) {
+        $realuser = \core\session\manager::get_realuser();
         $apachelog_username = clean_filename($realuser->username." as ".$apachelog_username);
         $apachelog_name = clean_filename($realuser->firstname." ".$realuser->lastname ." as ".$apachelog_name);
         $apachelog_userid = clean_filename($realuser->id." as ".$apachelog_userid);

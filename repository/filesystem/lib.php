@@ -194,11 +194,12 @@ class repository_filesystem extends repository {
     }
 
     public static function get_instance_option_names() {
-        return array('fs_path');
+        return array('fs_path', 'relativefiles');
     }
 
     public function set_option($options = array()) {
         $options['fs_path'] = clean_param($options['fs_path'], PARAM_PATH);
+        $options['relativefiles'] = clean_param($options['relativefiles'], PARAM_INT);
         $ret = parent::set_option($options);
         return $ret;
     }
@@ -229,6 +230,10 @@ class repository_filesystem extends repository {
                 }
                 closedir($handle);
             }
+            $mform->addElement('checkbox', 'relativefiles', get_string('relativefiles', 'repository_filesystem'),
+                get_string('relativefiles_desc', 'repository_filesystem'));
+            $mform->setType('relativefiles', PARAM_INT);
+
         } else {
             $mform->addElement('static', null, '',  get_string('nopermissions', 'error', get_string('configplugin', 'repository_filesystem')));
             return false;
@@ -261,17 +266,6 @@ class repository_filesystem extends repository {
     }
 
     /**
-     * Return reference file life time
-     *
-     * @param string $ref
-     * @return int
-     */
-    public function get_reference_file_lifetime($ref) {
-        // Does not cost us much to synchronise within our own filesystem, set to 1 minute
-        return 60;
-    }
-
-    /**
      * Return human readable reference information
      *
      * @param string $reference value of DB field files_reference.reference
@@ -287,37 +281,40 @@ class repository_filesystem extends repository {
         }
     }
 
-    /**
-     * Returns information about file in this repository by reference
-     *
-     * Returns null if file not found or is not readable
-     *
-     * @param stdClass $reference file reference db record
-     * @return stdClass|null contains one of the following:
-     *   - 'filesize' if file should not be copied to moodle filepool
-     *   - 'filepath' if file should be copied to moodle filepool
-     */
-    public function get_file_by_reference($reference) {
-        $ref = $reference->reference;
-        if ($ref{0} == '/') {
-            $filepath = $this->root_path.substr($ref, 1, strlen($ref)-1);
-        } else {
-            $filepath = $this->root_path.$ref;
+    public function sync_reference(stored_file $file) {
+        if ($file->get_referencelastsync() + 60 > time()) {
+            // Does not cost us much to synchronise within our own filesystem, check every 1 minute.
+            return false;
         }
+        static $issyncing = false;
+        if ($issyncing) {
+            // Avoid infinite recursion when calling $file->get_filesize() and get_contenthash().
+            return;
+        }
+        $filepath = $this->root_path.ltrim($file->get_reference(), '/');
         if (file_exists($filepath) && is_readable($filepath)) {
+            $fs = get_file_storage();
+            $issyncing = true;
             if (file_extension_in_typegroup($filepath, 'web_image')) {
-                // return path to image files so it will be copied into moodle filepool
-                // we need the file in filepool to generate an image thumbnail
-                return (object)array('filepath' => $filepath);
+                $contenthash = sha1_file($filepath);
+                if ($file->get_contenthash() == $contenthash) {
+                    // File did not change since the last synchronisation.
+                    $filesize = filesize($filepath);
+                } else {
+                    // Copy file into moodle filepool (used to generate an image thumbnail).
+                    list($contenthash, $filesize, $newfile) = $fs->add_file_to_pool($filepath);
+                }
             } else {
-                // return just the file size so file will NOT be copied into moodle filepool
-                return (object)array(
-                    'filesize' => filesize($filepath)
-                );
+                // Update only file size so file will NOT be copied into moodle filepool.
+                $contenthash = null;
+                $filesize = filesize($filepath);
             }
+            $issyncing = false;
+            $file->set_synchronized($contenthash, $filesize);
         } else {
-            return null;
+            $file->set_missingsource();
         }
+        return true;
     }
 
     /**
@@ -460,6 +457,44 @@ class repository_filesystem extends repository {
         if ($deletedcount) {
             mtrace(" instance {$this->id}: deleted $deletedcount thumbnails");
         }
+    }
+
+    /**
+     *  Gets a file relative to this file in the repository and sends it to the browser.
+     *
+     * @param stored_file $mainfile The main file we are trying to access relative files for.
+     * @param string $relativepath the relative path to the file we are trying to access.
+     */
+    public function send_relative_file(stored_file $mainfile, $relativepath) {
+        global $CFG;
+        // Check if this repository is allowed to use relative linking.
+        $allowlinks = $this->supports_relative_file();
+        $lifetime = isset($CFG->filelifetime) ? $CFG->filelifetime : 86400;
+        if (!empty($allowlinks)) {
+            // Get path to the mainfile.
+            $mainfilepath = $mainfile->get_source();
+
+            // Strip out filename from the path.
+            $filename = $mainfile->get_filename();
+            $basepath = strstr($mainfilepath, $filename, true);
+
+            $fullrelativefilepath = realpath($this->root_path.$basepath.$relativepath);
+
+            // Sanity check to make sure this path is inside this repository and the file exists.
+            if (strpos($fullrelativefilepath, $this->root_path) === 0 && file_exists($fullrelativefilepath)) {
+                send_file($fullrelativefilepath, basename($relativepath), $lifetime, 0);
+            }
+        }
+        send_file_not_found();
+    }
+
+    /**
+     * helper function to check if the repository supports send_relative_file.
+     *
+     * @return true|false
+     */
+    public function supports_relative_file() {
+        return $this->get_option('relativefiles');
     }
 }
 

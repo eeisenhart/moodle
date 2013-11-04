@@ -474,27 +474,26 @@ class assign_grading_table extends table_sql implements renderable {
         $o = '';
 
         $gradingdisabled = $this->assignment->grading_disabled($row->id);
-        if ($this->assignment->get_instance()->markingworkflow) {
-            // The function in the assignment keeps a static cache of this list of states.
-            $workflowstates = $this->assignment->get_marking_workflow_states_for_current_user();
-            $workflowstate = $row->workflowstate;
-            if (empty($workflowstate)) {
-                $workflowstate = ASSIGN_MARKING_WORKFLOW_STATE_NOTMARKED;
-            }
-            if ($this->quickgrading && !$gradingdisabled) {
-                $notmarked = get_string('markingworkflowstatenotmarked', 'assign');
-                $name = 'quickgrade_' . $row->id . '_workflowstate';
-                $o .= html_writer::select($workflowstates, $name, $workflowstate, array('' => $notmarked));
-                // Check if this user is a marker that can't manage allocations and doesn't have the marker column added.
-                if ($this->assignment->get_instance()->markingallocation &&
-                    !has_capability('mod/assign:manageallocations', $this->assignment->get_context())) {
+        // The function in the assignment keeps a static cache of this list of states.
+        $workflowstates = $this->assignment->get_marking_workflow_states_for_current_user();
+        $workflowstate = $row->workflowstate;
+        if (empty($workflowstate)) {
+            $workflowstate = ASSIGN_MARKING_WORKFLOW_STATE_NOTMARKED;
+        }
+        if ($this->quickgrading && !$gradingdisabled) {
+            $notmarked = get_string('markingworkflowstatenotmarked', 'assign');
+            $name = 'quickgrade_' . $row->id . '_workflowstate';
+            $o .= html_writer::select($workflowstates, $name, $workflowstate, array('' => $notmarked));
+            // Check if this user is a marker that can't manage allocations and doesn't have the marker column added.
+            if ($this->assignment->get_instance()->markingallocation &&
+                !has_capability('mod/assign:manageallocations', $this->assignment->get_context())) {
 
-                    $name = 'quickgrade_' . $row->id . '_allocatedmarker';
-                    $o .= html_writer::empty_tag('input', array('type'=>'hidden', 'name'=>$name, 'value'=>$row->allocatedmarker));
-                }
-            } else {
-                $o .= $this->output->container(get_string('markingworkflowstate' . $workflowstate, 'assign'), $workflowstate);
+                $name = 'quickgrade_' . $row->id . '_allocatedmarker';
+                $o .= html_writer::empty_tag('input', array('type' => 'hidden', 'name' => $name,
+                        'value' => $row->allocatedmarker));
             }
+        } else {
+            $o .= $this->output->container(get_string('markingworkflowstate' . $workflowstate, 'assign'), $workflowstate);
         }
         return $o;
     }
@@ -918,7 +917,14 @@ class assign_grading_table extends table_sql implements renderable {
                 $lockedstr = get_string('submissionslockedshort', 'assign');
                 $o .= $this->output->container($lockedstr, 'lockedsubmission');
             }
-            $o .= $this->col_workflowstatus($row);
+
+            // Add status of "grading", use markflow if enabled.
+            if ($instance->markingworkflow) {
+                $o .= $this->col_workflowstatus($row);
+            } else if ($row->grade !== null && $row->grade >= 0) {
+                $o .= $this->output->container(get_string('graded', 'assign'), 'submissiongraded');
+            }
+
             if (!$row->timesubmitted) {
                 $now = time();
                 $due = $instance->duedate;
@@ -1160,6 +1166,7 @@ class assign_grading_table extends table_sql implements renderable {
                         $submission->timemodified = $row->timesubmitted;
                         $submission->assignment = $this->assignment->get_instance()->id;
                         $submission->userid = $row->userid;
+                        $submission->attemptnumber = $row->attemptnumber;
                     }
                     // Field is used for only for import/export and refers the the fieldname for the text editor.
                     if (isset($field)) {
@@ -1185,6 +1192,7 @@ class assign_grading_table extends table_sql implements renderable {
                     $grade->userid = $row->userid;
                     $grade->grade = $row->grade;
                     $grade->mailed = $row->mailed;
+                    $grade->attemptnumber = $row->attemptnumber;
                 }
                 if ($this->quickgrading && $plugin->supports_quickgrading()) {
                     return $plugin->get_quickgrading_html($row->userid, $grade);

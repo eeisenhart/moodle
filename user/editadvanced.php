@@ -45,7 +45,12 @@ if (!empty($USER->newadminuser)) {
     $PAGE->set_course($SITE);
     $PAGE->set_pagelayout('maintenance');
 } else {
-    require_login($course);
+    if ($course->id == SITEID) {
+        require_login();
+        $PAGE->set_context(context_system::instance());
+    } else {
+        require_login($course);
+    }
     $PAGE->set_pagelayout('admin');
 }
 
@@ -70,13 +75,12 @@ if ($id == -1) {
     require_capability('moodle/user:update', $systemcontext);
     $user = $DB->get_record('user', array('id'=>$id), '*', MUST_EXIST);
     $PAGE->set_context(context_user::instance($user->id));
-    if ($user->id == $USER->id) {
-        if ($course->id != SITEID && $node = $PAGE->navigation->find($course->id, navigation_node::TYPE_COURSE)) {
-            $node->make_active();
-            $PAGE->navbar->includesettingsbase = true;
-        }
-    } else {
+    if ($user->id != $USER->id) {
         $PAGE->navigation->extend_for_user($user);
+    } else {
+        if ($node = $PAGE->navigation->find('myprofile', navigation_node::TYPE_ROOTNODE)) {
+            $node->force_open();
+        }
     }
 }
 
@@ -200,7 +204,7 @@ if ($usernew = $userform->get_data()) {
 
         // force logout if user just suspended
         if (isset($usernew->suspended) and $usernew->suspended and !$user->suspended) {
-            session_kill_user($user->id);
+            \core\session\manager::kill_user_sessions($user->id);
         }
     }
 
@@ -240,6 +244,10 @@ if ($usernew = $userform->get_data()) {
     if ($user->id == $USER->id) {
         // Override old $USER session variable
         foreach ((array)$usernew as $variable => $value) {
+            if ($variable === 'description' or $variable === 'password') {
+                // These are not set for security nad perf reasons.
+                continue;
+            }
             $USER->$variable = $value;
         }
         // preload custom fields
@@ -255,7 +263,7 @@ if ($usernew = $userform->get_data()) {
             redirect("$CFG->wwwroot/user/view.php?id=$USER->id&course=$course->id");
         }
     } else {
-        session_gc(); // remove stale sessions
+        \core\session\manager::gc(); // Remove stale sessions.
         redirect("$CFG->wwwroot/$CFG->admin/user.php");
     }
     //never reached

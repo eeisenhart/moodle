@@ -570,7 +570,7 @@ class pgsql_native_moodle_database extends moodle_database {
         pg_free_result($result);
 
         if ($usecache) {
-            $result = $cache->set($table, $structure);
+            $cache->set($table, $structure);
         }
 
         return $structure;

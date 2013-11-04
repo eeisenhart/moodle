@@ -31,6 +31,140 @@
 defined('MOODLE_INTERNAL') || die();
 
 /**
+ * Factory method that was returning moodle_session object.
+ *
+ * @deprecated since 2.6
+ * @return \core\session\manager
+ */
+function session_get_instance() {
+    // Note: the new session manager includes all methods from the original session class.
+    static $deprecatedinstance = null;
+
+    debugging('session_get_instance() is deprecated, use \core\session\manager instead', DEBUG_DEVELOPER);
+
+    if (!$deprecatedinstance) {
+        $deprecatedinstance = new \core\session\manager();
+    }
+
+    return $deprecatedinstance;
+}
+
+/**
+ * Returns true if legacy session used.
+ *
+ * @deprecated since 2.6
+ * @return bool
+ */
+function session_is_legacy() {
+    debugging('session_is_legacy() is deprecated, do not use any more', DEBUG_DEVELOPER);
+    return false;
+}
+
+/**
+ * Terminates all sessions, auth hooks are not executed.
+ * Useful in upgrade scripts.
+ *
+ * @deprecated since 2.6
+ */
+function session_kill_all() {
+    debugging('session_kill_all() is deprecated, use \core\session\manager::kill_all_sessions() instead', DEBUG_DEVELOPER);
+    \core\session\manager::kill_all_sessions();
+}
+
+/**
+ * Mark session as accessed, prevents timeouts.
+ *
+ * @deprecated since 2.6
+ * @param string $sid
+ */
+function session_touch($sid) {
+    debugging('session_touch() is deprecated, use \core\session\manager::touch_session() instead', DEBUG_DEVELOPER);
+    \core\session\manager::touch_session($sid);
+}
+
+/**
+ * Terminates one sessions, auth hooks are not executed.
+ *
+ * @deprecated since 2.6
+ * @param string $sid session id
+ */
+function session_kill($sid) {
+    debugging('session_kill() is deprecated, use \core\session\manager::kill_session() instead', DEBUG_DEVELOPER);
+    \core\session\manager::kill_session($sid);
+}
+
+/**
+ * Terminates all sessions of one user, auth hooks are not executed.
+ * NOTE: This can not work for file based sessions!
+ *
+ * @deprecated since 2.6
+ * @param int $userid user id
+ */
+function session_kill_user($userid) {
+    debugging('session_kill_user() is deprecated, use \core\session\manager::kill_user_sessions() instead', DEBUG_DEVELOPER);
+    \core\session\manager::kill_user_sessions($userid);
+}
+
+/**
+ * Session garbage collection
+ * - verify timeout for all users
+ * - kill sessions of all deleted users
+ * - kill sessions of users with disabled plugins or 'nologin' plugin
+ *
+ * @deprecated since 2.6
+ */
+function session_gc() {
+    debugging('session_gc() is deprecated, use \core\session\manager::gc() instead', DEBUG_DEVELOPER);
+    \core\session\manager::gc();
+}
+
+/**
+ * Setup $USER object - called during login, loginas, etc.
+ *
+ * Call sync_user_enrolments() manually after log-in, or log-in-as.
+ *
+ * @deprecated since 2.6
+ * @param stdClass $user full user record object
+ * @return void
+ */
+function session_set_user($user) {
+    debugging('session_set_user() is deprecated, use \core\session\manager::set_user() instead', DEBUG_DEVELOPER);
+    \core\session\manager::set_user($user);
+}
+
+/**
+ * Is current $USER logged-in-as somebody else?
+ * @deprecated since 2.6
+ * @return bool
+ */
+function session_is_loggedinas() {
+    debugging('session_is_loggedinas() is deprecated, use \core\session\manager::is_loggedinas() instead', DEBUG_DEVELOPER);
+    return \core\session\manager::is_loggedinas();
+}
+
+/**
+ * Returns the $USER object ignoring current login-as session
+ * @deprecated since 2.6
+ * @return stdClass user object
+ */
+function session_get_realuser() {
+    debugging('session_get_realuser() is deprecated, use \core\session\manager::get_realuser() instead', DEBUG_DEVELOPER);
+    return \core\session\manager::get_realuser();
+}
+
+/**
+ * Login as another user - no security checks here.
+ * @deprecated since 2.6
+ * @param int $userid
+ * @param stdClass $context
+ * @return void
+ */
+function session_loginas($userid, $context) {
+    debugging('session_loginas() is deprecated, use \core\session\manager::loginas() instead', DEBUG_DEVELOPER);
+    \core\session\manager::loginas($userid, $context);
+}
+
+/**
  * Minify JavaScript files.
  *
  * @deprecated since 2.6
@@ -1349,7 +1483,7 @@ function print_user_picture($user, $courseid, $picture=NULL, $size=0, $return=fa
  * When using this function, you should
  *
  * @global object
- * @param bool $usehtmleditor Enables the use of the htmleditor for this field.
+ * @param bool $unused No longer used.
  * @param int $rows Number of rows to display  (minimum of 10 when $height is non-null)
  * @param int $cols Number of columns to display (minimum of 65 when $width is non-null)
  * @param null $width (Deprecated) Width of the element; if a value is passed, the minimum value for $cols will be 65. Value is otherwise ignored.
@@ -1361,7 +1495,7 @@ function print_user_picture($user, $courseid, $picture=NULL, $size=0, $return=fa
  * @param string $id CSS ID to add to the textarea element.
  * @return string|void depending on the value of $return
  */
-function print_textarea($usehtmleditor, $rows, $cols, $width, $height, $name, $value='', $obsolete=0, $return=false, $id='') {
+function print_textarea($unused, $rows, $cols, $width, $height, $name, $value='', $obsolete=0, $return=false, $id='') {
     /// $width and height are legacy fields and no longer used as pixels like they used to be.
     /// However, you can set them to zero to override the mincols and minrows values below.
 
@@ -1378,29 +1512,19 @@ function print_textarea($usehtmleditor, $rows, $cols, $width, $height, $name, $v
         $id = 'edit-'.$name;
     }
 
-    if ($usehtmleditor) {
-        if ($height && ($rows < $minrows)) {
-            $rows = $minrows;
-        }
-        if ($width && ($cols < $mincols)) {
-            $cols = $mincols;
-        }
+    if ($height && ($rows < $minrows)) {
+        $rows = $minrows;
+    }
+    if ($width && ($cols < $mincols)) {
+        $cols = $mincols;
     }
 
-    if ($usehtmleditor) {
-        editors_head_setup();
-        $editor = editors_get_preferred_editor(FORMAT_HTML);
-        $editor->use_editor($id, array('legacy'=>true));
-    } else {
-        $editorclass = '';
-    }
+    editors_head_setup();
+    $editor = editors_get_preferred_editor(FORMAT_HTML);
+    $editor->use_editor($id, array('legacy'=>true));
 
     $str .= "\n".'<textarea class="form-textarea" id="'. $id .'" name="'. $name .'" rows="'. $rows .'" cols="'. $cols .'" spellcheck="true">'."\n";
-    if ($usehtmleditor) {
-        $str .= htmlspecialchars($value); // needed for editing of cleaned text!
-    } else {
-        $str .= s($value);
-    }
+    $str .= htmlspecialchars($value); // needed for editing of cleaned text!
     $str .= '</textarea>'."\n";
 
     if ($return) {
@@ -3023,21 +3147,29 @@ function get_child_categories($parentid) {
  *
  * coursecat::get($categoryid)->get_children()
  * - returns all children of the specified category as instances of class
- * coursecat, which means on each of them method get_children() can be called again
+ * coursecat, which means on each of them method get_children() can be called again.
+ * Only categories visible to the current user are returned.
  *
- * coursecat::get($categoryid)->get_children(array('recursive' => true))
- * - returns all children of the specified category and all subcategories
- *
- * coursecat::get(0)->get_children(array('recursive' => true))
- * - returns all categories defined in the system
+ * coursecat::get(0)->get_children()
+ * - returns all top-level categories visible to the current user.
  *
  * Sort fields can be specified, see phpdocs to {@link coursecat::get_children()}
+ *
+ * coursecat::make_categories_list()
+ * - returns an array of all categories id/names in the system.
+ * Also only returns categories visible to current user and can additionally be
+ * filetered by capability, see phpdocs to {@link coursecat::make_categories_list()}
+ *
+ * make_categories_options()
+ * - Returns full course categories tree to be used in html_writer::select()
  *
  * Also see functions {@link coursecat::get_children_count()}, {@link coursecat::count_all()},
  * {@link coursecat::get_default()}
  *
  * The code of this deprecated function is left as it is because coursecat::get_children()
- * returns categories as instances of coursecat and not stdClass
+ * returns categories as instances of coursecat and not stdClass. Also there is no
+ * substitute for retrieving the category with all it's subcategories. Plugin developers
+ * may re-use the code/queries from this function in their plugins if really necessary.
  *
  * @param string $parent The parent category if any
  * @param string $sort the sortorder
@@ -3047,7 +3179,7 @@ function get_child_categories($parentid) {
 function get_categories($parent='none', $sort=NULL, $shallow=true) {
     global $DB;
 
-    debugging('Function get_categories() is deprecated. Please use coursecat::get_children(). See phpdocs for more details',
+    debugging('Function get_categories() is deprecated. Please use coursecat::get_children() or see phpdocs for other alternatives',
             DEBUG_DEVELOPER);
 
     if ($sort === NULL) {
@@ -4544,4 +4676,29 @@ function get_browser_version_classes() {
 function generate_email_supportuser() {
     debugging('generate_email_supportuser is deprecated, please use core_user::get_support_user');
     return core_user::get_support_user();
+}
+
+/**
+ * Get issued badge details for assertion URL
+ *
+ * @deprecated since Moodle 2.6
+ * @param string $hash Unique hash of a badge
+ * @return array Information about issued badge.
+ */
+function badges_get_issued_badge_info($hash) {
+    debugging('Function badges_get_issued_badge_info() is deprecated. Please use core_badges_assertion class and methods to generate badge assertion.', DEBUG_DEVELOPER);
+    $assertion = new core_badges_assertion($hash);
+    return $assertion->get_badge_assertion();
+}
+
+/**
+ * Does the user want and can edit using rich text html editor?
+ * This function does not make sense anymore because a user can directly choose their preferred editor.
+ *
+ * @deprecated since 2.6
+ * @return bool
+ */
+function can_use_html_editor() {
+    debugging('can_use_html_editor has been deprecated please update your code to assume it returns true.', DEBUG_DEVELOPER);
+    return true;
 }

@@ -86,7 +86,16 @@
         }
     }
 
-    add_to_log($course->id, 'user', 'view all', 'index.php?id='.$course->id, '');
+    $event = \core\event\user_list_viewed::create(array(
+        'context' => $context,
+        'objectid' => $course->id,
+        'other' => array(
+            'courseid' => $course->id,
+            'courseshortname' => $course->shortname,
+            'coursefullname' => $course->fullname
+        )
+    ));
+    $event->trigger();
 
     $bulkoperations = has_capability('moodle/course:bulkmessaging', $context);
 
@@ -673,7 +682,7 @@
                         $links[] = html_writer::link(new moodle_url('/course/user.php?id='. $course->id .'&user='. $user->id), get_string('activity'));
                     }
 
-                    if ($USER->id != $user->id && !session_is_loggedinas() && has_capability('moodle/user:loginas', $context) && !is_siteadmin($user->id)) {
+                    if ($USER->id != $user->id && !\core\session\manager::is_loggedinas() && has_capability('moodle/user:loginas', $context) && !is_siteadmin($user->id)) {
                         $links[] = html_writer::link(new moodle_url('/course/loginas.php?id='. $course->id .'&user='. $user->id .'&sesskey='. sesskey()), get_string('loginas'));
                     }
 

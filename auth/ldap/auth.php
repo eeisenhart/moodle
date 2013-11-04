@@ -808,7 +808,7 @@ class auth_plugin_ldap extends auth_plugin_base {
                     $updateuser->suspended = 1;
                     user_update_user($updateuser, false);
                     echo "\t"; print_string('auth_dbsuspenduser', 'auth_db', array('name'=>$user->username, 'id'=>$user->id)); echo "\n";
-                    session_kill_user($user->id);
+                    \core\session\manager::kill_user_sessions($user->id);
                 }
             } else {
                 print_string('nouserentriestoremove', 'auth_ldap');
@@ -1739,12 +1739,11 @@ class auth_plugin_ldap extends auth_plugin_base {
             return false;
         }
         $username   = $cf[$key];
+
         // Here we want to trigger the whole authentication machinery
         // to make sure no step is bypassed...
         $user = authenticate_user_login($username, $key);
         if ($user) {
-            add_to_log(SITEID, 'user', 'login', "view.php?id=$USER->id&course=".SITEID,
-                       $user->id, 0, $user->id);
             complete_user_login($user);
 
             // Cleanup the key to prevent reuse...
@@ -1763,7 +1762,10 @@ class auth_plugin_ldap extends auth_plugin_base {
                 $urltogo = $CFG->wwwroot.'/';
                 unset($SESSION->wantsurl);
             }
-            redirect($urltogo);
+            // We do not want to redirect if we are in a PHPUnit test.
+            if (!PHPUNIT_TEST) {
+                redirect($urltogo);
+            }
         }
         // Should never reach here.
         return false;

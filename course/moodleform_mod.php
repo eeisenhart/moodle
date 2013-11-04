@@ -55,7 +55,12 @@ abstract class moodleform_mod extends moodleform {
      */
     protected $applyadminlockedflags = false;
 
+    /** @var object The course format of the current course. */
+    protected $courseformat;
+
     function moodleform_mod($current, $section, $cm, $course) {
+        global $CFG;
+
         $this->current   = $current;
         $this->_instance = $current->instance;
         $this->_section  = $section;
@@ -65,6 +70,10 @@ abstract class moodleform_mod extends moodleform {
         } else {
             $this->context = context_course::instance($course->id);
         }
+
+        // Set the course format.
+        require_once($CFG->dirroot . '/course/format/lib.php');
+        $this->courseformat = course_get_format($course);
 
         // Guess module name
         $matches = array();
@@ -650,12 +659,16 @@ abstract class moodleform_mod extends moodleform {
             $mform->addElement('hidden', 'completionunlocked', 0);
             $mform->setType('completionunlocked', PARAM_INT);
 
+            $trackingdefault = COMPLETION_TRACKING_NONE;
+            // If system and activity default is on, set it.
+            if ($CFG->completiondefault && $this->_features->defaultcompletion) {
+                $trackingdefault = COMPLETION_TRACKING_MANUAL;
+            }
+
             $mform->addElement('select', 'completion', get_string('completion', 'completion'),
                 array(COMPLETION_TRACKING_NONE=>get_string('completion_none', 'completion'),
                 COMPLETION_TRACKING_MANUAL=>get_string('completion_manual', 'completion')));
-            $mform->setDefault('completion', $this->_features->defaultcompletion
-                ? COMPLETION_TRACKING_MANUAL
-                : COMPLETION_TRACKING_NONE);
+            $mform->setDefault('completion', $trackingdefault);
             $mform->addHelpButton('completion', 'completion', 'completion');
 
             // Automatic completion once you view it
@@ -827,9 +840,9 @@ abstract class moodleform_mod extends moodleform {
             $mform->addRule('introeditor', get_string('required'), 'required', null, 'client');
         }
 
-        // If the 'show description' feature is enabled, this checkbox appears
-        // below the intro.
-        if ($this->_features->showdescription) {
+        // If the 'show description' feature is enabled, this checkbox appears below the intro.
+        // We want to hide that when using the singleactivity course format because it is confusing.
+        if ($this->_features->showdescription  && $this->courseformat->has_view_page()) {
             $mform->addElement('checkbox', 'showdescription', get_string('showdescription'));
             $mform->addHelpButton('showdescription', 'showdescription');
         }
@@ -857,7 +870,9 @@ abstract class moodleform_mod extends moodleform {
         // elements in a row need a group
         $buttonarray = array();
 
-        if ($submit2label !== false) {
+        // Label for the submit button to return to the course.
+        // Ignore this button in single activity format because it is confusing.
+        if ($submit2label !== false && $this->courseformat->has_view_page()) {
             $buttonarray[] = &$mform->createElement('submit', 'submitbutton2', $submit2label);
         }
 

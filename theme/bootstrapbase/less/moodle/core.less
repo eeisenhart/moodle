@@ -23,11 +23,6 @@
     width:100%;
 }
 
-.fluid-span (@columns) {
-    width: (@fluidGridColumnWidth * @columns) + (@fluidGridGutterWidth * (@columns - 1));
-    *width: (@fluidGridColumnWidth * @columns) + (@fluidGridGutterWidth * (@columns - 1)) - (.5 / @gridRowWidth * 100 * 1%);
-}
-
 .empty-region-side-post.used-region-side-pre #region-main.span8 {
     /** increase the span size by 1 **/
     .fluid-span(9);
@@ -188,8 +183,7 @@ a.autolink.glossary:hover {
 .warning,
 .errorbox .title,
 .pagingbar .title,
-.pagingbar .thispage,
-.headingblock {
+.pagingbar .thispage {
     font-weight: bold;
 }
 img.resize {
@@ -1427,6 +1421,9 @@ audio.mediaplugin_html5audio {
     bottom: -50px;
     position: fixed;
 }
+.moodle-dialogue-base .moodle-dialogue-fullscreen .moodle-dialogue-content {
+    overflow: auto;
+}
 .moodle-dialogue-base .moodle-dialogue-fullscreen .closebutton {
     width: 28px;
     height: 16px;
@@ -1490,7 +1487,6 @@ audio.mediaplugin_html5audio {
     right: auto;
 }
 .moodle-dialogue-base .moodle-dialogue .moodle-dialogue-bd {
-    overflow: auto;
     padding: 1em;
     line-height: 2em;
     color: #555;
@@ -1881,6 +1877,12 @@ table.badgeissuedinfo .bfield {
     text-align: left;
     font-style: italic;
 }
+.dir-rtl {
+    table.badgeissuedinfo .bvalue,
+    table.badgeissuedinfo .bfield {
+        text-align: right;
+    }
+}
 ul.badges {
     margin: 0;
     list-style: none;
@@ -1937,6 +1939,9 @@ div.badge .expireimage {
 .notconnected {
     color: @errorText;
 }
+.connecting {
+    color: @warningText;
+}
 #page-badges-award .recipienttable tr td {
     vertical-align: top;
 }
@@ -1963,6 +1968,12 @@ div.badge .expireimage {
     margin: 0px;
     text-align: left;
     vertical-align: middle;
+}
+.dir-rtl .activatebadge {
+    text-align: right;
+}
+img#persona_signin {
+    cursor: pointer;
 }
 .addcourse {
     float: right;
@@ -2042,6 +2053,7 @@ div.badge .expireimage {
         .box-shadow(5px 5px 20px 0 #666);
 
         a {
+            white-space:nowrap;
             display: block;
             color: @dropdownLinkColor;
             padding:2px 1em 2px 0.5em;

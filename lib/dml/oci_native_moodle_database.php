@@ -664,7 +664,7 @@ class oci_native_moodle_database extends moodle_database {
         }
 
         if ($usecache) {
-            $result = $cache->set($table, $structure);
+            $cache->set($table, $structure);
         }
 
         return $structure;
@@ -1720,6 +1720,10 @@ class oci_native_moodle_database extends moodle_database {
             }
             $this->change_database_structure($sql);
         }
+    }
+
+    public function session_lock_supported() {
+        return true;
     }
 
     /**

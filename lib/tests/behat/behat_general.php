@@ -276,7 +276,101 @@ class behat_general extends behat_base {
     }
 
     /**
-     * Checks, that page contains specified text.
+     * Checks, that the specified element is visible. Only available in tests using Javascript.
+     *
+     * @Then /^"(?P<element_string>(?:[^"]|\\")*)" "(?P<selector_string>(?:[^"]|\\")*)" should be visible$/
+     * @throws ElementNotFoundException
+     * @throws ExpectationException
+     * @throws DriverException
+     * @param string $element
+     * @param string $selectortype
+     * @return void
+     */
+    public function should_be_visible($element, $selectortype) {
+
+        if (!$this->running_javascript()) {
+            throw new DriverException('Visible checks are disabled in scenarios without Javascript support');
+        }
+
+        $node = $this->get_selected_node($selectortype, $element);
+        if (!$node->isVisible()) {
+            throw new ExpectationException('"' . $element . '" "' . $selectortype . '" is not visible', $this->getSession());
+        }
+    }
+
+    /**
+     * Checks, that the specified element is not visible. Only available in tests using Javascript.
+     *
+     * @Then /^"(?P<element_string>(?:[^"]|\\")*)" "(?P<selector_string>(?:[^"]|\\")*)" should not be visible$/
+     * @throws ElementNotFoundException
+     * @throws ExpectationException
+     * @param string $element
+     * @param string $selectortype
+     * @return void
+     */
+    public function should_not_be_visible($element, $selectortype) {
+
+        try {
+            $this->should_be_visible($element, $selectortype);
+            throw new ExpectationException('"' . $element . '" "' . $selectortype . '" is visible', $this->getSession());
+        } catch (ExpectationException $e) {
+            // All as expected.
+        }
+    }
+
+    /**
+     * Checks, that the specified element is visible inside the specified container. Only available in tests using Javascript.
+     *
+     * @Then /^"(?P<element_string>(?:[^"]|\\")*)" "(?P<selector_string>[^"]*)" in the "(?P<element_container_string>(?:[^"]|\\")*)" "(?P<text_selector_string>[^"]*)" should be visible$/
+     * @throws ElementNotFoundException
+     * @throws DriverException
+     * @throws ExpectationException
+     * @param string $element Element we look for
+     * @param string $selectortype The type of what we look for
+     * @param string $nodeelement Element we look in
+     * @param string $nodeselectortype The type of selector where we look in
+     */
+    public function in_the_should_be_visible($element, $selectortype, $nodeelement, $nodeselectortype) {
+
+        if (!$this->running_javascript()) {
+            throw new DriverException('Visible checks are disabled in scenarios without Javascript support');
+        }
+
+        $node = $this->get_node_in_container($selectortype, $element, $nodeselectortype, $nodeelement);
+        if (!$node->isVisible()) {
+            throw new ExpectationException(
+                '"' . $element . '" "' . $selectortype . '" in the "' . $nodeelement . '" "' . $nodeselectortype . '" is not visible',
+                $this->getSession()
+            );
+        }
+    }
+
+    /**
+     * Checks, that the specified element is not visible inside the specified container. Only available in tests using Javascript.
+     *
+     * @Then /^"(?P<element_string>(?:[^"]|\\")*)" "(?P<selector_string>[^"]*)" in the "(?P<element_container_string>(?:[^"]|\\")*)" "(?P<text_selector_string>[^"]*)" should not be visible$/
+     * @throws ElementNotFoundException
+     * @throws ExpectationException
+     * @param string $element Element we look for
+     * @param string $selectortype The type of what we look for
+     * @param string $nodeelement Element we look in
+     * @param string $nodeselectortype The type of selector where we look in
+     */
+    public function in_the_should_not_be_visible($element, $selectortype, $nodeelement, $nodeselectortype) {
+
+        try {
+            $this->in_the_should_be_visible($element, $selectortype, $nodeelement, $nodeselectortype);
+            throw new ExpectationException(
+                '"' . $element . '" "' . $selectortype . '" in the "' . $nodeelement . '" "' . $nodeselectortype . '" is visible',
+                $this->getSession()
+            );
+        } catch (ExpectationException $e) {
+            // All as expected.
+        }
+    }
+
+    /**
+     * Checks, that page contains specified text. It also checks if the text is visible when running Javascript tests.
      *
      * @Then /^I should see "(?P<text_string>(?:[^"]|\\")*)"$/
      * @throws ExpectationException
@@ -284,19 +378,34 @@ class behat_general extends behat_base {
      */
     public function assert_page_contains_text($text) {
 
+        // Looking for all the matching nodes without any other descendant matching the
+        // same xpath (we are using contains(., ....).
         $xpathliteral = $this->getSession()->getSelectorsHandler()->xpathLiteral($text);
-        $xpath = "/descendant::*[contains(., $xpathliteral)]";
+        $xpath = "/descendant-or-self::*[contains(., $xpathliteral)]" .
+            "[count(descendant::*[contains(., $xpathliteral)]) = 0]";
 
         // Wait until it finds the text, otherwise custom exception.
         try {
-            $this->find('xpath', $xpath);
+            $nodes = $this->find_all('xpath', $xpath);
+
+            // We also check for the element visibility when running JS tests.
+            if ($this->running_javascript()) {
+                foreach ($nodes as $node) {
+                    if ($node->isVisible()) {
+                        return;
+                    }
+                }
+
+                throw new ExpectationException("'{$text}' text was found but was not visible", $this->getSession());
+            }
+
         } catch (ElementNotFoundException $e) {
             throw new ExpectationException('"' . $text . '" text was not found in the page', $this->getSession());
         }
     }
 
     /**
-     * Checks, that page doesn't contain specified text.
+     * Checks, that page doesn't contain specified text. When running Javascript tests it also considers that texts may be hidden.
      *
      * @Then /^I should not see "(?P<text_string>(?:[^"]|\\")*)"$/
      * @throws ExpectationException
@@ -304,45 +413,84 @@ class behat_general extends behat_base {
      */
     public function assert_page_not_contains_text($text) {
 
-        $xpathliteral = $this->getSession()->getSelectorsHandler()->xpathLiteral($text);
-        $xpath = "/descendant::*[not(contains(., $xpathliteral))]";
-
-        // Wait until it finds the text, otherwise custom exception.
+        // Delegating the process to assert_page_contains_text.
         try {
-            $this->find('xpath', $xpath);
-        } catch (ElementNotFoundException $e) {
-            throw new ExpectationException('"' . $text . '" text was found in the page', $this->getSession());
+            $this->assert_page_contains_text($text);
+        } catch (ExpectationException $e) {
+            // It should not appear, so this is good.
+            return;
         }
+
+        // If the page contains the text this is failing.
+        throw new ExpectationException('"' . $text . '" text was found in the page', $this->getSession());
     }
 
     /**
-     * Checks, that element with specified CSS selector or XPath contains specified text.
+     * Checks, that the specified element contains the specified text. When running Javascript tests it also considers that texts may be hidden.
      *
      * @Then /^I should see "(?P<text_string>(?:[^"]|\\")*)" in the "(?P<element_string>(?:[^"]|\\")*)" "(?P<text_selector_string>[^"]*)"$/
+     * @throws ElementNotFoundException
+     * @throws ExpectationException
      * @param string $text
      * @param string $element Element we look in.
      * @param string $selectortype The type of element where we are looking in.
      */
     public function assert_element_contains_text($text, $element, $selectortype) {
 
-        // Transforming from steps definitions selector/locator format to Mink format.
-        list($selector, $locator) = $this->transform_text_selector($selectortype, $element);
-        $this->assertSession()->elementTextContains($selector, $locator, $text);
+        // Getting the container where the text should be found.
+        $container = $this->get_selected_node($selectortype, $element);
+
+        // Looking for all the matching nodes without any other descendant matching the
+        // same xpath (we are using contains(., ....).
+        $xpathliteral = $this->getSession()->getSelectorsHandler()->xpathLiteral($text);
+        $xpath = "/descendant-or-self::*[contains(., $xpathliteral)]" .
+            "[count(descendant::*[contains(., $xpathliteral)]) = 0]";
+
+        // Wait until it finds the text inside the container, otherwise custom exception.
+        try {
+            $nodes = $this->find_all('xpath', $xpath, false, $container);
+
+            // We also check for the element visibility when running JS tests.
+            if ($this->running_javascript()) {
+                foreach ($nodes as $node) {
+                    if ($node->isVisible()) {
+                        return;
+                    }
+                }
+
+                throw new ExpectationException("'{$text}' text was found in the {$element} element but was not visible", $this->getSession());
+            }
+
+        } catch (ElementNotFoundException $e) {
+            throw new ExpectationException('"' . $text . '" text was not found in the ' . $element . ' element', $this->getSession());
+        }
+
     }
 
     /**
-     * Checks, that element with specified CSS selector or XPath doesn't contain specified text.
+     * Checks, that the specified element does not contain the specified text. When running Javascript tests it also considers that texts may be hidden.
      *
      * @Then /^I should not see "(?P<text_string>(?:[^"]|\\")*)" in the "(?P<element_string>(?:[^"]|\\")*)" "(?P<text_selector_string>[^"]*)"$/
+     * @throws ElementNotFoundException
+     * @throws ExpectationException
      * @param string $text
      * @param string $element Element we look in.
      * @param string $selectortype The type of element where we are looking in.
      */
     public function assert_element_not_contains_text($text, $element, $selectortype) {
 
-        // Transforming from steps definitions selector/locator format to mink format.
-        list($selector, $locator) = $this->transform_text_selector($selectortype, $element);
-        $this->assertSession()->elementTextNotContains($selector, $locator, $text);
+        // Delegating the process to assert_element_contains_text.
+        try {
+            $this->assert_element_contains_text($text, $element, $selectortype);
+        } catch (ExpectationException $e) {
+            // It should not appear, so this is good.
+            // We only catch ExpectationException as ElementNotFoundException
+            // will be thrown if the container does not exist.
+            return;
+        }
+
+        // If the element contains the text this is failing.
+        throw new ExpectationException('"' . $text . '" text was found in the ' . $element . ' element', $this->getSession());
     }
 
     /**

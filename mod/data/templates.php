@@ -90,7 +90,7 @@ if ($mode == 'singletemplate') {
 $PAGE->requires->js('/mod/data/data.js');
 $PAGE->set_title($data->name);
 $PAGE->set_heading($course->fullname);
-$PAGE->set_pagelayout('report');
+$PAGE->set_pagelayout('admin');
 echo $OUTPUT->header();
 echo $OUTPUT->heading(format_string($data->name), 2);
 echo $OUTPUT->box(format_module_intro('data', $data, $cm->id), 'generalbox', 'intro');
@@ -192,7 +192,7 @@ echo $OUTPUT->box_start('generalbox boxaligncenter boxwidthwide');
 echo '<table cellpadding="4" cellspacing="0" border="0">';
 
 /// Add the HTML editor(s).
-$usehtmleditor = can_use_html_editor() && ($mode != 'csstemplate') && ($mode != 'jstemplate') && !$disableeditor;
+$usehtmleditor = ($mode != 'csstemplate') && ($mode != 'jstemplate') && !$disableeditor;
 if ($mode == 'listtemplate'){
     // Print the list template header.
     echo '<tr>';
@@ -275,15 +275,13 @@ if ($mode != 'csstemplate' and $mode != 'jstemplate') {
 
     echo '</select>';
     echo '<br /><br /><br /><br /><input type="submit" name="defaultform" value="'.get_string('resettemplate','data').'" />';
-    if (can_use_html_editor()) {
-        echo '<br /><br />';
-        if ($usehtmleditor) {
-            $switcheditor = get_string('editordisable', 'data');
-            echo '<input type="submit" name="switcheditor" value="'.s($switcheditor).'" />';
-        } else {
-            $switcheditor = get_string('editorenable', 'data');
-            echo '<input type="submit" name="useeditor" value="'.s($switcheditor).'" />';
-        }
+    echo '<br /><br />';
+    if ($usehtmleditor) {
+        $switcheditor = get_string('editordisable', 'data');
+        echo '<input type="submit" name="switcheditor" value="'.s($switcheditor).'" />';
+    } else {
+        $switcheditor = get_string('editorenable', 'data');
+        echo '<input type="submit" name="useeditor" value="'.s($switcheditor).'" />';
     }
 } else {
     echo '<br /><br /><br /><br /><input type="submit" name="defaultform" value="'.get_string('resettemplate','data').'" />';

@@ -44,9 +44,6 @@
     $returnurl = "$CFG->wwwroot/$CFG->admin/filters.php";
     admin_externalpage_setup('managefilters');
 
-    // Purge all caches related to filter administration.
-    cache::make('core', 'plugininfo_filter')->purge();
-
     $filters = filter_get_global_states();
 
     // In case any new filters have been installed, but not put in the table yet.
@@ -59,7 +56,7 @@
 /// Process actions ============================================================
 
     if ($action) {
-        if (!isset($filters[$filterpath]) && !isset($newfilters[$filterpath])) {
+        if ($action !== 'delete' and !isset($filters[$filterpath]) and !isset($newfilters[$filterpath])) {
             throw new moodle_exception('filternotinstalled', 'error', $returnurl, $filterpath);
         }
 
@@ -97,38 +94,6 @@
             filter_set_global_state($filterpath, $filters[$filterpath]->active, -1);
         }
         break;
-
-    case 'delete':
-        // If not yet confirmed, display a confirmation message.
-        if (!optional_param('confirm', '', PARAM_BOOL)) {
-            $filtername = filter_get_name($filterpath);
-
-            $title = get_string('deletefilterareyousure', 'admin', $filtername);
-            echo $OUTPUT->header();
-            echo $OUTPUT->heading($title);
-
-            $linkcontinue = new moodle_url($returnurl, array('action' => 'delete', 'filterpath' => $filterpath, 'confirm' => 1));
-            $formcancel = new single_button(new moodle_url($returnurl), get_string('no'), 'get');
-            echo $OUTPUT->confirm(get_string('deletefilterareyousuremessage', 'admin', $filtername), $linkcontinue, $formcancel);
-            echo $OUTPUT->footer();
-            exit;
-        }
-
-        // Do the deletion.
-        $title = get_string('deletingfilter', 'admin', $filterpath);
-        echo $OUTPUT->header();
-        echo $OUTPUT->heading($title);
-
-        // Delete all data for this plugin.
-        filter_delete_all_for_filter($filterpath);
-
-        $a = new stdClass;
-        $a->filter = $filterpath;
-        $a->directory = "$CFG->dirroot/filter/$filterpath";
-        echo $OUTPUT->box(get_string('deletefilterfiles', 'admin', $a), 'generalbox', 'notice');
-        echo $OUTPUT->continue_button($returnurl);
-        echo $OUTPUT->footer();
-        exit;
     }
 
     // Add any missing filters to the DB table.
@@ -138,6 +103,7 @@
 
     // Reset caches and return
     if ($action) {
+        core_plugin_manager::reset_caches();
         reset_text_filters_cache();
         redirect($returnurl);
     }
@@ -170,7 +136,7 @@
 
     $table = new html_table();
     $table->head  = array(get_string('filter'), get_string('isactive', 'filters'),
-            get_string('order'), get_string('applyto', 'filters'), get_string('settings'), get_string('delete'));
+            get_string('order'), get_string('applyto', 'filters'), get_string('settings'), get_string('uninstallplugin', 'core_admin'));
     $table->colclasses = array ('leftalign', 'leftalign', 'centeralign', 'leftalign', 'leftalign', 'leftalign');
     $table->attributes['class'] = 'admintable generaltable';
     $table->id = 'filterssetting';
@@ -212,6 +178,9 @@
 /// Display helper functions ===================================================
 
 function filters_action_url($filterpath, $action) {
+    if ($action === 'delete') {
+        return core_plugin_manager::instance()->get_uninstall_url('filter_'.$filterpath, 'manage');
+    }
     return new moodle_url('/admin/filters.php', array('sesskey'=>sesskey(), 'filterpath'=>$filterpath, 'action'=>$action));
 }
 
@@ -263,7 +232,7 @@ function get_table_row($filterinfo, $isfirstrow, $islastactive, $applytostrings)
     }
 
     // Delete
-    $row[] = '<a href="' . filters_action_url($filter, 'delete') . '">' . get_string('delete') . '</a>';
+    $row[] = '<a href="' . filters_action_url($filter, 'delete') . '">' . get_string('uninstallplugin', 'core_admin') . '</a>';
 
     return $row;
 }

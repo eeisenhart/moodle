@@ -64,11 +64,15 @@ class behat_course extends behat_base {
      *
      * @Given /^I create a course with:$/
      * @param TableNode $table The course data
+     * @return Given[]
      */
     public function i_create_a_course_with(TableNode $table) {
         return array(
             new Given('I go to the courses management page'),
-            new Given('I press "' . get_string('addnewcourse') . '"'),
+            new Given('I should see the "'.get_string('categories').'" management page'),
+            new Given('I click on category "'.get_string('miscellaneous').'" in the management interface'),
+            new Given('I should see the "'.get_string('categoriesandcoures').'" management page'),
+            new Given('I click on "'.get_string('newcourse').'" "link" in the "#course-listing" "css_element"'),
             new Given('I fill the moodle form with:', $table),
             new Given('I press "' . get_string('savechanges') . '"')
         );
@@ -78,15 +82,17 @@ class behat_course extends behat_base {
      * Goes to the system courses/categories management page.
      *
      * @Given /^I go to the courses management page$/
+     * @return Given[]
      */
     public function i_go_to_the_courses_management_page() {
-
-        return array(
-            new Given('I am on homepage'),
-            new Given('I expand "' . get_string('administrationsite') . '" node'),
-            new Given('I expand "' . get_string('courses', 'admin') . '" node'),
-            new Given('I follow "' . get_string('coursemgmt', 'admin') . '"'),
-        );
+        if ($this->running_javascript()) {
+            $scenario = array(new Given('I expand "' . get_string('administrationsite') . '" node'));
+        } else {
+            $scenario = array(new Given('I follow "' . get_string('administrationsite') . '"'));
+        }
+        $scenario[] = new Given('I expand "' . get_string('courses', 'admin') . '" node');
+        $scenario[] = new Given('I follow "' . get_string('coursemgmt', 'admin') . '"');
+        return $scenario;
     }
 
     /**
@@ -96,6 +102,7 @@ class behat_course extends behat_base {
      * @param string $activity The activity name
      * @param int $section The section number
      * @param TableNode $data The activity field/value data
+     * @return Given[]
      */
     public function i_add_to_section_and_i_fill_the_form_with($activity, $section, TableNode $data) {
 
@@ -157,6 +164,7 @@ class behat_course extends behat_base {
      *
      * @Given /^I turn section "(?P<section_number>\d+)" highlighting on$/
      * @param int $sectionnumber The section number
+     * @return Given[]
      */
     public function i_turn_section_highlighting_on($sectionnumber) {
 
@@ -174,6 +182,7 @@ class behat_course extends behat_base {
      *
      * @Given /^I turn section "(?P<section_number>\d+)" highlighting off$/
      * @param int $sectionnumber The section number
+     * @return Given[]
      */
     public function i_turn_section_highlighting_off($sectionnumber) {
 
@@ -216,6 +225,33 @@ class behat_course extends behat_base {
         if ($this->running_javascript()) {
             $this->getSession()->wait(5000, false);
         }
+    }
+
+    /**
+     * Go to editing section page for specified section number. You need to be in the course page and on editing mode.
+     *
+     * @Given /^I edit the section "(?P<section_number>\d+)"$/
+     * @param int $sectionnumber
+     */
+    public function i_edit_the_section($sectionnumber) {
+        return new Given('I click on "' . get_string('editsummary') . '" "link" in the "#section-' . $sectionnumber . '" "css_element"');
+    }
+
+    /**
+     * Edit specified section and fill the form data with the specified field/value pairs.
+     *
+     * @When /^I edit the section "(?P<section_number>\d+)" and I fill the form with:$/
+     * @param int $sectionnumber The section number
+     * @param TableNode $data The activity field/value data
+     * @return Given[]
+     */
+    public function i_edit_the_section_and_i_fill_the_form_with($sectionnumber, TableNode $data) {
+
+        return array(
+            new Given('I edit the section "' . $sectionnumber . '"'),
+            new Given('I fill the moodle form with:', $data),
+            new Given('I press "' . get_string('savechanges') . '"')
+        );
     }
 
     /**
@@ -379,6 +415,7 @@ class behat_course extends behat_base {
      *
      * @Then /^"(?P<activity_or_resource_string>(?:[^"]|\\")*)" activity should be visible$/
      * @param string $activityname
+     * @throws ExpectationException
      */
     public function activity_should_be_visible($activityname) {
 
@@ -406,6 +443,7 @@ class behat_course extends behat_base {
      *
      * @Then /^"(?P<activity_or_resource_string>(?:[^"]|\\")*)" activity should be hidden$/
      * @param string $activityname
+     * @throws ExpectationException
      */
     public function activity_should_be_hidden($activityname) {
 
@@ -441,6 +479,7 @@ class behat_course extends behat_base {
      * @Given /^I move "(?P<activity_name_string>(?:[^"]|\\")*)" activity to section "(?P<section_number>\d+)"$/
      * @param string $activityname The activity name
      * @param int $sectionnumber The number of section
+     * @return Given[]
      */
     public function i_move_activity_to_section($activityname, $sectionnumber) {
 
@@ -477,6 +516,7 @@ class behat_course extends behat_base {
      * @throws DriverException Step not available when Javascript is disabled
      * @param string $activityname
      * @param string $newactivityname
+     * @return Given[]
      */
     public function i_change_activity_name_to($activityname, $newactivityname) {
 
@@ -487,7 +527,7 @@ class behat_course extends behat_base {
         // Adding chr(10) to save changes.
         $activity = $this->escape($activityname);
         return array(
-            new Given('I click on "' . get_string('actions', 'moodle') . '" "link" in the "' . $activity . '" activity'),
+            new Given('I open "' . $activity . '" actions menu'),
             new Given('I click on "' . get_string('edittitle') . '" "link" in the "' . $activity .'" activity'),
             new Given('I fill in "title" with "' . $this->escape($newactivityname) . chr(10) . '"'),
             new Given('I wait "2" seconds')
@@ -495,17 +535,42 @@ class behat_course extends behat_base {
     }
 
     /**
+     * Opens an activity actions menu if it is not already opened.
+     *
+     * @Given /^I open "(?P<activity_name_string>(?:[^"]|\\")*)" actions menu$/
+     * @throws DriverException The step is not available when Javascript is disabled
+     * @param string $activityname
+     * @return Given
+     */
+    public function i_open_actions_menu($activityname) {
+
+        if (!$this->running_javascript()) {
+            throw new DriverException('Activities actions menu not available when Javascript is disabled');
+        }
+
+        // If it is already opened we do nothing.
+        $activitynode = $this->get_activity_node($activityname);
+        $classes = array_flip(explode(' ', $activitynode->getAttribute('class')));
+        if (!empty($classes['action-menu-shown'])) {
+            return;
+        }
+
+        return new Given('I click on "' . get_string('actions', 'moodle') . '" "link" in the "' . $this->escape($activityname) . '" activity');
+    }
+
+    /**
      * Indents to the right the activity or resource specified by it's name. Editing mode should be on.
      *
      * @Given /^I indent right "(?P<activity_name_string>(?:[^"]|\\")*)" activity$/
      * @param string $activityname
+     * @return Given[]
      */
     public function i_indent_right_activity($activityname) {
 
         $steps = array();
         $activity = $this->escape($activityname);
         if ($this->running_javascript()) {
-            $steps[] = new Given('I click on "' . get_string('actions', 'moodle') . '" "link" in the "' . $activity . '" activity');
+            $steps[] = new Given('I open "' . $activity . '" actions menu');
         }
         $steps[] = new Given('I click on "' . get_string('moveright') . '" "link" in the "' . $activity . '" activity');
 
@@ -521,13 +586,14 @@ class behat_course extends behat_base {
      *
      * @Given /^I indent left "(?P<activity_name_string>(?:[^"]|\\")*)" activity$/
      * @param string $activityname
+     * @return Given[]
      */
     public function i_indent_left_activity($activityname) {
 
         $steps = array();
         $activity = $this->escape($activityname);
         if ($this->running_javascript()) {
-            $steps[] = new Given('I click on "' . get_string('actions', 'moodle') . '" "link" in the "' . $activity . '" activity');
+            $steps[] = new Given('I open "' . $activity . '" actions menu');
         }
         $steps[] = new Given('I click on "' . get_string('moveleft') . '" "link" in the "' . $activity . '" activity');
 
@@ -544,6 +610,7 @@ class behat_course extends behat_base {
      *
      * @Given /^I delete "(?P<activity_name_string>(?:[^"]|\\")*)" activity$/
      * @param string $activityname
+     * @return Given[]
      */
     public function i_delete_activity($activityname) {
 
@@ -578,12 +645,13 @@ class behat_course extends behat_base {
      *
      * @Given /^I duplicate "(?P<activity_name_string>(?:[^"]|\\")*)" activity$/
      * @param string $activityname
+     * @return Given[]
      */
     public function i_duplicate_activity($activityname) {
         $steps = array();
         $activity = $this->escape($activityname);
         if ($this->running_javascript()) {
-            $steps[] = new Given('I click on "' . get_string('actions', 'moodle') . '" "link" in the "' . $activity . '" activity');
+            $steps[] = new Given('I open "' . $activity . '" actions menu');
         }
         $steps[] = new Given('I click on "' . get_string('duplicate') . '" "link" in the "' . $activity . '" activity');
         $steps[] = new Given('I press "' . get_string('continue') .'"');
@@ -597,12 +665,13 @@ class behat_course extends behat_base {
      * @Given /^I duplicate "(?P<activity_name_string>(?:[^"]|\\")*)" activity editing the new copy with:$/
      * @param string $activityname
      * @param TableNode $data
+     * @return Given[]
      */
     public function i_duplicate_activity_editing_the_new_copy_with($activityname, TableNode $data) {
         $steps = array();
         $activity = $this->escape($activityname);
         if ($this->running_javascript()) {
-            $steps[] = new Given('I click on "' . get_string('actions', 'moodle') . '" "link" in the "' . $activity . '" activity');
+            $steps[] = new Given('I open "' . $activity . '" actions menu');
         }
         $steps[] = new Given('I click on "' . get_string('duplicate') . '" "link" in the "' . $activity . '" activity');
         $steps[] = new Given('I press "' . get_string('continue') .'"');
@@ -793,4 +862,486 @@ class behat_course extends behat_base {
         return true;
     }
 
+    /**
+     * Returns the id of the category with the given idnumber.
+     *
+     * Please note that this function requires the category to exist. If it does not exist an ExpectationException is thrown.
+     *
+     * @param string $idnumber
+     * @return string
+     * @throws ExpectationException
+     */
+    protected function get_category_id($idnumber) {
+        global $DB;
+        try {
+            return $DB->get_field('course_categories', 'id', array('idnumber' => $idnumber), MUST_EXIST);
+        } catch (dml_missing_record_exception $ex) {
+            throw new ExpectationException(sprintf("There is no category in the database with the idnumber '%s'", $idnumber));
+        }
+    }
+
+    /**
+     * Returns the id of the course with the given idnumber.
+     *
+     * Please note that this function requires the category to exist. If it does not exist an ExpectationException is thrown.
+     *
+     * @param string $idnumber
+     * @return string
+     * @throws ExpectationException
+     */
+    protected function get_course_id($idnumber) {
+        global $DB;
+        try {
+            return $DB->get_field('course', 'id', array('idnumber' => $idnumber), MUST_EXIST);
+        } catch (dml_missing_record_exception $ex) {
+            throw new ExpectationException(sprintf("There is no course in the database with the idnumber '%s'", $idnumber));
+        }
+    }
+
+    /**
+     * Returns the category node from within the listing on the management page.
+     *
+     * @param string $idnumber
+     * @return \Behat\Mink\Element\NodeElement
+     */
+    protected function get_management_category_listing_node_by_idnumber($idnumber) {
+        $id = $this->get_category_id($idnumber);
+        $selector = sprintf('#category-listing .listitem-category[data-id="%d"] > div', $id);
+        return $this->find('css', $selector);
+    }
+
+    /**
+     * Returns a category node from within the management interface.
+     *
+     * @param string $name The name of the category.
+     * @param bool $link If set to true we'll resolve to the link rather than just the node.
+     * @return \Behat\Mink\Element\NodeElement
+     */
+    protected function get_management_category_listing_node_by_name($name, $link = false) {
+        $selector = "//div[@id='category-listing']//li[contains(concat(' ', normalize-space(@class), ' '), ' listitem-category ')]//a[text()='{$name}']";
+        if ($link === false) {
+            $selector .= "/ancestor::li[@data-id]";
+        }
+        return $this->find('xpath', $selector);
+    }
+
+    /**
+     * Returns a course node from within the management interface.
+     *
+     * @param string $name The name of the course.
+     * @param bool $link If set to true we'll resolve to the link rather than just the node.
+     * @return \Behat\Mink\Element\NodeElement
+     */
+    protected function get_management_course_listing_node_by_name($name, $link = false) {
+        $selector = "//div[@id='course-listing']//li[contains(concat(' ', @class, ' '), ' listitem-course ')]//a[text()='{$name}']";
+        if ($link === false) {
+            $selector .= "/ancestor::li[@data-id]";
+        }
+        return $this->find('xpath', $selector);
+    }
+
+    /**
+     * Returns the course node from within the listing on the management page.
+     *
+     * @param string $idnumber
+     * @return \Behat\Mink\Element\NodeElement
+     */
+    protected function get_management_course_listing_node_by_idnumber($idnumber) {
+        $id = $this->get_course_id($idnumber);
+        $selector = sprintf('#course-listing .listitem-course[data-id="%d"] > div', $id);
+        return $this->find('css', $selector);
+    }
+
+    /**
+     * Clicks on a category in the management interface.
+     *
+     * @Given /^I click on category "(?P<name>[^"]*)" in the management interface$/
+     * @param string $name
+     */
+    public function i_click_on_category_in_the_management_interface($name) {
+        $node = $this->get_management_category_listing_node_by_name($name, true);
+        $node->click();
+    }
+
+    /**
+     * Clicks on a course in the management interface.
+     *
+     * @Given /^I click on course "(?P<name>[^"]*)" in the management interface$/
+     * @param string $name
+     */
+    public function i_click_on_course_in_the_management_interface($name) {
+        $node = $this->get_management_course_listing_node_by_name($name, true);
+        $node->click();
+    }
+
+    /**
+     * Clicks on a category checkbox in the management interface.
+     *
+     * @Given /^I select category "(?P<name>[^"]*)" in the management interface$/
+     * @param string $name
+     */
+    public function i_select_category_in_the_management_interface($name) {
+        $node = $this->get_management_category_listing_node_by_name($name);
+        $node->checkField('bcat[]');
+    }
+
+    /**
+     * Clicks course checkbox in the management interface.
+     *
+     * @Given /^I select course "(?P<name>[^"]*)" in the management interface$/
+     * @param string $name
+     */
+    public function i_select_course_in_the_management_interface($name) {
+        $node = $this->get_management_course_listing_node_by_name($name);
+        $node->checkField('bc[]');
+    }
+
+    /**
+     * Move selected categories to top level in the management interface.
+     *
+     * @Given /^I move category "(?P<idnumber>[^"]*)" to top level in the management interface$/
+     * @param string $idnumber
+     * @return Given[]
+     */
+    public function i_move_category_to_top_level_in_the_management_interface($idnumber) {
+        $id = $this->get_category_id($idnumber);
+        $selector = sprintf('.listitem-category[data-id="%d"] > div', $id);
+        $node = $this->find('css', $selector);
+        $node->checkField('bcat[]');
+        return array(
+            new Given('I select "' .  coursecat::get(0)->get_formatted_name() . '" from "menumovecategoriesto"'),
+            new Given('I press "bulkmovecategories"'),
+        );
+    }
+
+    /**
+     * Checks that a category is a subcategory of specific category.
+     *
+     * @Given /^I should see category "(?P<subcatidnumber>[^"]*)" as subcategory of "(?P<catidnumber>[^"]*)" in the management interface$/
+     * @throws ExpectationException
+     * @param string $subcatidnumber
+     * @param string $catidnumber
+     */
+    public function i_should_see_category_as_subcategory_of_in_the_management_interface($subcatidnumber, $catidnumber) {
+        $categorynodeid = $this->get_category_id($catidnumber);
+        $subcategoryid = $this->get_category_id($subcatidnumber);
+        $exception = new ExpectationException('The category '.$subcatidnumber.' is not a subcategory of '.$catidnumber, $this->getSession());
+        $selector = sprintf('#category-listing .listitem-category[data-id="%d"] .listitem-category[data-id="%d"]', $categorynodeid, $subcategoryid);
+        $this->find('css', $selector, $exception);
+    }
+
+    /**
+     * Checks that a category is not a subcategory of specific category.
+     *
+     * @Given /^I should not see category "(?P<subcatidnumber>[^"]*)" as subcategory of "(?P<catidnumber>[^"]*)" in the management interface$/
+     * @throws ExpectationException
+     * @param string $subcatidnumber
+     * @param string $catidnumber
+     */
+    public function i_should_not_see_category_as_subcategory_of_in_the_management_interface($subcatidnumber, $catidnumber) {
+        try {
+            $this->i_should_see_category_as_subcategory_of_in_the_management_interface($subcatidnumber, $catidnumber);
+        } catch (ExpectationException $e) {
+            // ExpectedException means that it is not highlighted.
+            return;
+        }
+        throw new ExpectationException('The category '.$subcatidnumber.' is a subcategory of '.$catidnumber, $this->getSession());
+    }
+
+    /**
+     * Click to expand a category revealing its sub categories within the management UI.
+     *
+     * @Given /^I click to expand category "(?P<idnumber>[^"]*)" in the management interface$/
+     * @param string $idnumber
+     */
+    public function i_click_to_expand_category_in_the_management_interface($idnumber) {
+        $categorynode = $this->get_management_category_listing_node_by_idnumber($idnumber);
+        $exception = new ExpectationException('Category "' . $idnumber . '" does not contain an expand or collapse toggle.', $this->getSession());
+        $togglenode = $this->find('css', 'a[data-action=collapse],a[data-action=expand]', $exception, $categorynode);
+        $togglenode->click();
+    }
+
+    /**
+     * Checks that a category within the management interface is visible.
+     *
+     * @Given /^category in management listing should be visible "(?P<idnumber>[^"]*)"$/
+     * @param string $idnumber
+     */
+    public function category_in_management_listing_should_be_visible($idnumber) {
+        $id = $this->get_category_id($idnumber);
+        $exception = new ExpectationException('The category '.$idnumber.' is not visible.', $this->getSession());
+        $selector = sprintf('#category-listing .listitem-category[data-id="%d"][data-visible="1"]', $id);
+        $this->find('css', $selector, $exception);
+    }
+
+    /**
+     * Checks that a category within the management interface is dimmed.
+     *
+     * @Given /^category in management listing should be dimmed "(?P<idnumber>[^"]*)"$/
+     * @param string $idnumber
+     */
+    public function category_in_management_listing_should_be_dimmed($idnumber) {
+        $id = $this->get_category_id($idnumber);
+        $selector = sprintf('#category-listing .listitem-category[data-id="%d"][data-visible="0"]', $id);
+        $exception = new ExpectationException('The category '.$idnumber.' is visible.', $this->getSession());
+        $this->find('css', $selector, $exception);
+    }
+
+    /**
+     * Checks that a course within the management interface is visible.
+     *
+     * @Given /^course in management listing should be visible "(?P<idnumber>[^"]*)"$/
+     * @param string $idnumber
+     */
+    public function course_in_management_listing_should_be_visible($idnumber) {
+        $id = $this->get_course_id($idnumber);
+        $exception = new ExpectationException('The course '.$idnumber.' is not visible.', $this->getSession());
+        $selector = sprintf('#course-listing .listitem-course[data-id="%d"][data-visible="1"]', $id);
+        $this->find('css', $selector, $exception);
+    }
+
+    /**
+     * Checks that a course within the management interface is dimmed.
+     *
+     * @Given /^course in management listing should be dimmed "(?P<idnumber>[^"]*)"$/
+     * @param string $idnumber
+     */
+    public function course_in_management_listing_should_be_dimmed($idnumber) {
+        $id = $this->get_course_id($idnumber);
+        $exception = new ExpectationException('The course '.$idnumber.' is visible.', $this->getSession());
+        $selector = sprintf('#course-listing .listitem-course[data-id="%d"][data-visible="0"]', $id);
+        $this->find('css', $selector, $exception);
+    }
+
+    /**
+     * Toggles the visibility of a course in the management UI.
+     *
+     * If it was visible it will be hidden. If it is hidden it will be made visible.
+     *
+     * @Given /^I toggle visibility of course "(?P<idnumber>[^"]*)" in management listing$/
+     * @param string $idnumber
+     */
+    public function i_toggle_visibility_of_course_in_management_listing($idnumber) {
+        $id = $this->get_course_id($idnumber);
+        $selector = sprintf('#course-listing .listitem-course[data-id="%d"][data-visible]', $id);
+        $node = $this->find('css', $selector);
+        $exception = new ExpectationException('Course listing "' . $idnumber . '" does not contain a show or hide toggle.', $this->getSession());
+        if ($node->getAttribute('data-visible') === '1') {
+            $toggle = $this->find('css', '.action-hide', $exception, $node);
+        } else {
+            $toggle = $this->find('css', '.action-show', $exception, $node);
+        }
+        $toggle->click();
+    }
+
+    /**
+     * Toggles the visibility of a category in the management UI.
+     *
+     * If it was visible it will be hidden. If it is hidden it will be made visible.
+     *
+     * @Given /^I toggle visibility of category "(?P<idnumber>[^"]*)" in management listing$/
+     */
+    public function i_toggle_visibility_of_category_in_management_listing($idnumber) {
+        $id = $this->get_category_id($idnumber);
+        $selector = sprintf('#category-listing .listitem-category[data-id="%d"][data-visible]', $id);
+        $node = $this->find('css', $selector);
+        $exception = new ExpectationException('Category listing "' . $idnumber . '" does not contain a show or hide toggle.', $this->getSession());
+        if ($node->getAttribute('data-visible') === '1') {
+            $toggle = $this->find('css', '.action-hide', $exception, $node);
+        } else {
+            $toggle = $this->find('css', '.action-show', $exception, $node);
+        }
+        $toggle->click();
+    }
+
+    /**
+     * Moves a category displayed in the management interface up or down one place.
+     *
+     * @Given /^I click to move category "(?P<idnumber>[^"]*)" (?P<direction>up|down) one$/
+     *
+     * @param string $idnumber The category idnumber
+     * @param string $direction The direction to move in, either up or down
+     */
+    public function i_click_to_move_category_by_one($idnumber, $direction) {
+        $node = $this->get_management_category_listing_node_by_idnumber($idnumber);
+        $this->user_moves_listing_by_one('category', $node, $direction);
+    }
+
+    /**
+     * Moves a course displayed in the management interface up or down one place.
+     *
+     * @Given /^I click to move course "(?P<idnumber>[^"]*)" (?P<direction>up|down) one$/
+     *
+     * @param string $idnumber The course idnumber
+     * @param string $direction The direction to move in, either up or down
+     */
+    public function i_click_to_move_course_by_one($idnumber, $direction) {
+        $node = $this->get_management_course_listing_node_by_idnumber($idnumber);
+        $this->user_moves_listing_by_one('course', $node, $direction);
+    }
+
+    /**
+     * Moves a course or category listing within the management interface up or down by one.
+     *
+     * @param string $listingtype One of course or category
+     * @param \Behat\Mink\Element\NodeElement $listingnode
+     * @param string $direction One of up or down.
+     * @param bool $highlight If set to false we don't check the node has been highlighted.
+     */
+    protected function user_moves_listing_by_one($listingtype, $listingnode, $direction, $highlight = true) {
+        $up = (strtolower($direction) === 'up');
+        if ($up) {
+            $exception = new ExpectationException($listingtype.' listing does not contain a moveup button.', $this->getSession());
+            $button = $this->find('css', 'a.action-moveup', $exception, $listingnode);
+        } else {
+            $exception = new ExpectationException($listingtype.' listing does not contain a movedown button.', $this->getSession());
+            $button = $this->find('css', 'a.action-movedown', $exception, $listingnode);
+        }
+        $button->click();
+        if ($this->running_javascript() && $highlight) {
+            $listitem = $listingnode->getParent();
+            $exception = new ExpectationException('Nothing was highlighted, ajax didn\'t occur or didn\'t succeed.', $this->getSession());
+            $this->spin(array($this, 'listing_is_highlighted'), $listitem->getTagName().'#'.$listitem->getAttribute('id'), 2, $exception, true);
+        }
+    }
+
+    /**
+     * Used by spin to determine the callback has been highlighted.
+     *
+     * @param behat_course $self A self reference (default first arg from a spin callback)
+     * @param \Behat\Mink\Element\NodeElement $selector
+     * @return bool
+     */
+    protected function listing_is_highlighted($self, $selector) {
+        $listitem = $this->find('css', $selector);
+        return $listitem->hasClass('highlight');
+    }
+
+    /**
+     * Check that one course appears before another in the course category management listings.
+     *
+     * @Given /^I should see course listing "(?P<preceedingcourse>[^"]*)" before "(?P<followingcourse>[^"]*)"$/
+     *
+     * @param string $preceedingcourse The first course to find
+     * @param string $followingcourse The second course to find (should be AFTER the first course)
+     * @throws ExpectationException
+     */
+    public function i_should_see_course_listing_before($preceedingcourse, $followingcourse) {
+        $xpath = "//div[@id='course-listing']//li[contains(concat(' ', @class, ' '), ' listitem-course ')]//a[text()='{$preceedingcourse}']/ancestor::li[@data-id]//following::a[text()='{$followingcourse}']";
+        $msg = "{$preceedingcourse} course does not appear before {$followingcourse} course";
+        if (!$this->getSession()->getDriver()->find($xpath)) {
+            throw new ExpectationException($msg, $this->getSession());
+        }
+    }
+
+    /**
+     * Check that one category appears before another in the course category management listings.
+     *
+     * @Given /^I should see category listing "(?P<preceedingcategory>[^"]*)" before "(?P<followingcategory>[^"]*)"$/
+     *
+     * @param string $preceedingcategory The first category to find
+     * @param string $followingcategory The second category to find (should be after the first category)
+     * @throws ExpectationException
+     */
+    public function i_should_see_category_listing_before($preceedingcategory, $followingcategory) {
+        $xpath = "//div[@id='category-listing']//li[contains(concat(' ', @class, ' '), ' listitem-category ')]//a[text()='{$preceedingcategory}']/ancestor::li[@data-id]//following::a[text()='{$followingcategory}']";
+        $msg = "{$preceedingcategory} category does not appear before {$followingcategory} category";
+        if (!$this->getSession()->getDriver()->find($xpath)) {
+            throw new ExpectationException($msg, $this->getSession());
+        }
+    }
+
+    /**
+     * Checks that we are on the course management page that we expect to be on and that no course has been selected.
+     *
+     * @Given /^I should see the "(?P<mode>[^"]*)" management page$/
+     * @param string $mode The mode to expected. One of 'Courses', 'Course categories' or 'Course categories and courses'
+     * @return Given[]
+     */
+    public function i_should_see_the_courses_management_page($mode) {
+        $return = array(
+            new Given('I should see "Course and category management" in the "h2" "css_element"')
+        );
+        switch ($mode) {
+            case "Courses":
+                $return[] = new Given('"#category-listing" "css_element" should not exists');
+                $return[] = new Given('"#course-listing" "css_element" should exists');
+                break;
+            case "Course categories":
+                $return[] = new Given('"#category-listing" "css_element" should exists');
+                $return[] = new Given('"#course-listing" "css_element" should not exists');
+                break;
+            case "Courses categories and courses":
+            default:
+                $return[] = new Given('"#category-listing" "css_element" should exists');
+                $return[] = new Given('"#course-listing" "css_element" should exists');
+                break;
+        }
+        $return[] = new Given('"#course-detail" "css_element" should not exists');
+        return $return;
+    }
+
+    /**
+     * Checks that we are on the course management page that we expect to be on and that a course has been selected.
+     *
+     * @Given /^I should see the "(?P<mode>[^"]*)" management page with a course selected$/
+     * @param string $mode The mode to expected. One of 'Courses', 'Course categories' or 'Course categories and courses'
+     * @return Given[]
+     */
+    public function i_should_see_the_courses_management_page_with_a_course_selected($mode) {
+        $return = $this->i_should_see_the_courses_management_page($mode);
+        array_pop($return);
+        $return[] = new Given('"#course-detail" "css_element" should exists');
+        return $return;
+    }
+
+    /**
+     * Locates a course in the course category management interface and then triggers an action for it.
+     *
+     * @Given /^I click on "(?P<action>[^"]*)" action for "(?P<name>[^"]*)" in management course listing$/
+     *
+     * @param string $action The action to take. One of
+     * @param string $name The name of the course as it is displayed in the management interface.
+     */
+    public function i_click_on_action_for_item_in_management_course_listing($action, $name) {
+        $node = $this->get_management_course_listing_node_by_name($name);
+        $this->user_clicks_on_management_listing_action('course', $node, $action);
+    }
+
+    /**
+     * Locates a category in the course category management interface and then triggers an action for it.
+     *
+     * @Given /^I click on "(?P<action>[^"]*)" action for "(?P<name>[^"]*)" in management category listing$/
+     *
+     * @param string $action The action to take. One of
+     * @param string $name The name of the category as it is displayed in the management interface.
+     */
+    public function i_click_on_action_for_item_in_management_category_listing($action, $name) {
+        $node = $this->get_management_category_listing_node_by_name($name);
+        $this->user_clicks_on_management_listing_action('category', $node, $action);
+    }
+
+    /**
+     * Finds the node to use for a management listitem action and clicks it.
+     *
+     * @param string $listingtype Either course or category.
+     * @param \Behat\Mink\Element\NodeElement $listingnode
+     * @param string $action The action being taken
+     * @throws Behat\Mink\Exception\ExpectationException
+     */
+    protected function user_clicks_on_management_listing_action($listingtype, $listingnode, $action) {
+        $actionsnode = $listingnode->find('xpath', "//*[contains(concat(' ', normalize-space(@class), ' '), '{$listingtype}-item-actions')]");
+        if (!$actionsnode) {
+            throw new ExpectationException("Could not find the actions for $listingtype", $this->getSession());
+        }
+        $actionnode = $actionsnode->find('css', '.action-'.$action);
+        if (!$actionnode) {
+            throw new ExpectationException("Expected action was not available or not found ($action)", $this->getSession());
+        }
+        if ($this->running_javascript() && !$actionnode->isVisible()) {
+            $actionsnode->find('css', 'a.toggle-display')->click();
+            $actionnode = $actionsnode->find('css', '.action-'.$action);
+        }
+        $actionnode->click();
+    }
 }

@@ -91,7 +91,10 @@ a.autolink.glossary:hover {cursor: help;}
 .errorbox .title,
 .pagingbar .title,
 .pagingbar .thispage,
-.headingblock {font-weight: bold;}
+#site-news-forum h2,
+#frontpage-course-list h2,
+#frontpage-category-names h2,
+#frontpage-category-combo h2 {font-weight: bold;}
 img.resize {height: 1em;width: 1em;}
 .block img.resize,
 .breadcrumb img.resize {height: 0.9em;width: 0.8em;}
@@ -287,7 +290,7 @@ a.skip:active {position: static;display: block;}
 .mform .fitem fieldset.fgroup label,
 .mform .fradio label,
 .mform fieldset.fdate_selector label,
-.mform fieldset.fdate_time_selector label {display:inline; float:none; margin-left:.3em; vertical-align:baseline;}
+.mform fieldset.fdate_time_selector label { display: inline; float: none; margin-left: .3em; vertical-align: text-bottom;}
 .dir-rtl .mform .fcheckbox label,
 .dir-rtl .mform .fduration label,
 .dir-rtl .mform .fitem fieldset.fgroup label,
@@ -529,6 +532,7 @@ body.tag .managelink {padding: 5px;}
 .path-backup .mform .grouped_settings .fitem .fitemtitle {width:40%;padding-right:10px;}
 .path-backup.dir-rtl .mform .grouped_settings .fitem .fitemtitle {width: 60%;}
 .path-backup .mform .grouped_settings .fitem .felement {width:50%;}
+.path-backup .mform .grouped_settings .fitem.backup_selector .felement {width:100%;}
 .path-backup.dir-rtl .mform .grouped_settings .fitem .felement {width: 99%;}
 .path-backup .mform .grouped_settings.section_level .include_setting {width:50%;margin:0;float:left;clear:left;font-weight:bold;}
 .path-backup.dir-rtl  .mform .grouped_settings.section_level .include_setting {float: right; clear: right;}
@@ -563,6 +567,9 @@ body.tag .managelink {padding: 5px;}
 .path-backup .wibbler .state10 { background: #444; }
 .path-backup .wibbler .state11 { background: #333; }
 .path-backup .wibbler .state12 { background: #222; }
+.path-backup .backup_log { margin-top: 2em; }
+.path-backup .backup_log h2 { font-size: 1em; }
+.path-backup .backup_log_contents { border: 1px solid #ddd; padding: 10px; height: 300px; overflow-y: scroll; }
 
 /**
  * Web Service
@@ -942,6 +949,9 @@ sup {vertical-align: super;}
     bottom: -50px;
     position: fixed;
 }
+.moodle-dialogue-base .moodle-dialogue-fullscreen .moodle-dialogue-content {
+    overflow: auto;
+}
 .moodle-dialogue-base .moodle-dialogue-fullscreen .closebutton {
     width: 28px;
     height: 16px;
@@ -1006,7 +1016,6 @@ sup {vertical-align: super;}
 }
 
 .moodle-dialogue-base .moodle-dialogue .moodle-dialogue-bd {
-    overflow: auto;
     padding: 1em;
     line-height: 2em;
     color: #555;
@@ -1382,30 +1391,39 @@ table.collection td { border-width: 1px; border-style: solid; border-color: #CCC
 table.collection .r1 { background-color: #FFFFFF; }
 table.collection .r0 { background-color: #F6F6F6; }
 table.collection ul { margin: 0.5em 0.5em 0.5em 2em; }
+.dir-rtl table.collection ul { margin: 0.5em 2em 0.5em 0.5em; }
 
 #page-badges-view table.collection .badgeimage,
 #page-badges-index table.collection .status { width: 15%; text-align: center; vertical-align: middle; }
 #page-badges-view table.collection .awards,
 #page-badges-index table.collection .awards { width: 10%; text-align: center; vertical-align: middle; }
 #page-badges-view table.collection .description { width: 25%; text-align: left; }
+#page-badges-view.dir-rtl table.collection .description { width: 25%; text-align: right; }
 
 table.collection .name { text-align: left; vertical-align: middle; }
+.dir-rtl table.collection .name { text-align: right; vertical-align: middle; }
 #page-badges-view table.collection .criteria { width: 35%; text-align: left; vertical-align: top; }
+#page-badges-view.dir-rtl table.collection .criteria { text-align: right;  }
 #page-badges-index table.collection .criteria { width: 40%; text-align: left; vertical-align: top; }
+#page-badges-index.dir-rtl table.collection .criteria { text-align: right;  }
 #page-badges-index table.collection .actions { width: 11em; text-align: center; vertical-align: middle; }
 
 a.criteria-action { padding: 0px 3px; float: right; }
+.dir-rtl a.criteria-action { float: left; }
 table.issuedbadgebox { width: 750px; background-color: white; }
 table.badgeissuedimage { width: 150px; text-align: center; }
 table.badgeissuedinfo { width: 600px; }
 table.badgeissuedinfo .bvalue { text-align: left; vertical-align: middle; }
+.dir-rtl table.badgeissuedinfo .bvalue { text-align: right; }
 table.badgeissuedinfo .bfield { width: 125px; text-align: left; font-style: italic; }
+.dir-rtl table.badgeissuedinfo .bfield { text-align: right; }
 
 ul.badges { margin: 0; list-style: none; }
 .badges li { position: relative; display: inline-block; padding-bottom: 2em; text-align: center; vertical-align: top; width: 150px; }
 .badges li .badge-name { display: block; padding: 5px; }
 .badges li > img { position: absolute; }
 .badges li .badge-image { width: 90px; height: 90px; left: 10px; top: 0px; z-index: 1; }
+.dir-rtl .badges li .badge-image { right: 10px; }
 .badges li .badge-actions { position: relative; }
 
 div.badge { position: relative; display: block; }
@@ -1428,7 +1446,10 @@ div.badge .expireimage { width: 100px; height: 100px; left: 20px; top: 0px; }
 .statusbox.active { background-color: #D9F991; }
 .statusbox.inactive { background-color: #FFEBA8; }
 .activatebadge { margin: 0px; text-align: left; vertical-align: middle; }
+.dir-rtl .activatebadge { text-align: right; }
 .addcourse { float: right; }
+.dir-rtl .addcourse { float: left; }
+img#persona_signin { cursor: pointer; }
 
 /**
  * The date selector popup.
@@ -1444,7 +1465,7 @@ div.badge .expireimage { width: 100px; height: 100px; left: 20px; top: 0px; }
 .moodle-actionmenu > ul,
 .moodle-actionmenu > ul > li {display: inline-block;}
 .moodle-actionmenu ul {padding: 0;margin: 0;list-style-type: none;}
-.moodle-actionmenu a.hidden {display: none;}
+#page .moodle-actionmenu a.hidden {display: none;}
 .moodle-actionmenu .toggle-display,
 .moodle-actionmenu .menu-action-text {display: none;}
 
@@ -1457,7 +1478,7 @@ div.badge .expireimage { width: 100px; height: 100px; left: 20px; top: 0px; }
 
 .moodle-actionmenu[data-enhanced].show {position: relative;}
 .moodle-actionmenu[data-enhanced].show .menu {position: absolute;text-align:left;z-index: 1000;display: block;background-color: #fff;border: 1px solid #ccc;-webkit-border-radius: 5px;-moz-border-radius: 5px;border-radius: 5px;-webkit-box-shadow: 5px 5px 20px 0 #666666;-moz-box-shadow: 5px 5px 20px 0 #666666;box-shadow: 5px 5px 20px 0 #666666;}
-.moodle-actionmenu[data-enhanced].show .menu a {display: block;padding: 2px 1em 2px 0.5em;color: #333333;}
+.moodle-actionmenu[data-enhanced].show .menu a {white-space:nowrap;display: block;padding: 2px 1em 2px 0.5em;color: #333333;}
 .moodle-actionmenu[data-enhanced].show .menu a:hover,
 .moodle-actionmenu[data-enhanced].show .menu a:focus {color: #ffffff;background-color: #0088cc;}
 .moodle-actionmenu[data-enhanced].show .menu a:first-child {-webkit-border-top-right-radius: 4px;border-top-right-radius: 4px;-webkit-border-top-left-radius: 4px;border-top-left-radius: 4px;-moz-border-radius-topright: 4px;-moz-border-radius-topleft: 4px;}
@@ -1473,22 +1494,30 @@ div.badge .expireimage { width: 100px; height: 100px; left: 20px; top: 0px; }
 .dir-rtl .moodle-actionmenu[data-enhanced].show .menu {text-align: right;right: auto;left: 0;}
 .dir-rtl .moodle-actionmenu[data-enhanced].show .menu .iconsmall {margin-right: 0;margin-left: 8px;}
 
-.menu.align-tl-bl {top: 100%;left: 0;margin-top: 4px;}
-.menu.align-tr-bl {top: 100%;right: 100%;}
-.menu.align-bl-bl {bottom: 100%;left: 0;}
-.menu.align-br-bl {right: 100%;bottom: 100%;}
-.menu.align-tl-br {top: 100%;left: 100%;}
-.menu.align-tr-br {top: 100%;right: 0;margin-top: 4px;}
-.menu.align-bl-br {bottom: 100%;left: 100%;}
-.menu.align-br-br {right: 0;bottom: 100%;}
-.menu.align-tl-tl {top: 0;left: 0;}
-.menu.align-tr-tl {top: 0;right: 100%;margin-right: 4px;}
-.menu.align-bl-tl {bottom: 100%;left: 0;margin-bottom: 4px;}
-.menu.align-br-tl {right: 100%;bottom: 100%;}
-.menu.align-tl-tr {top: 0;left: 100%;margin-left: 4px;}
-.menu.align-tr-tr {top: 0;right: 0;}
-.menu.align-bl-tr {bottom: 100%;left: 100%;}
-.menu.align-br-tr {right: 0;bottom: 100%;margin-bottom: 4px;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-tl-bl {top: 100%;left: 0;margin-top: 4px;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-tr-bl {top: 100%;right: 100%;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-bl-bl {bottom: 100%;left: 0;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-br-bl {right: 100%;bottom: 100%;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-tl-br {top: 100%;left: 100%;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-tr-br {top: 100%;right: 0;margin-top: 4px;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-bl-br {bottom: 100%;left: 100%;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-br-br {right: 0;bottom: 100%;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-tl-tl {top: 0;left: 0;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-tr-tl {top: 0;right: 100%;margin-right: 4px;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-bl-tl {bottom: 100%;left: 0;margin-bottom: 4px;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-br-tl {right: 100%;bottom: 100%;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-tl-tr {top: 0;left: 100%;margin-left: 4px;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-tr-tr {top: 0;right: 0;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-bl-tr {bottom: 100%;left: 100%;}
+.jsenabled .moodle-actionmenu[data-enhanced] .menu.align-br-tr {right: 0;bottom: 100%;margin-bottom: 4px;}
+
+.moodle-actionmenu > ul > li[role="menuitem"] {
+    display: none;
+}
+
+.jsenabled .moodle-actionmenu[data-enhance="moodle-core-actionmenu"] > ul > li[role="menuitem"] {
+    display: inline-block;
+}
 
 .dir-rtl .menu.align-tl-bl {right: 0;left: auto;}
 .dir-rtl .menu.align-tr-bl {right: auto;left: 100%;}

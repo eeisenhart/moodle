@@ -173,6 +173,15 @@ function cron_run() {
         mtrace(' Deleting temporary files...');
         cron_delete_from_temp();
 
+        // Cleanup user password reset records
+        // Delete any reset request records which are expired by more than a day.
+        // (We keep recently expired requests around so we can give a different error msg to users who
+        // are trying to user a recently expired reset attempt).
+        $pwresettime = isset($CFG->pwresettime) ? $CFG->pwresettime : 1800;
+        $earliestvalid = time() - $pwresettime - DAYSECS;
+        $DB->delete_records_select('user_password_resets', "timerequested < ?", array($earliestvalid));
+        mtrace(' Cleaned up old password reset records');
+
         mtrace("...finished clean-up tasks");
 
     } // End of occasional clean-up tasks
@@ -190,9 +199,10 @@ function cron_run() {
     mtrace(' Created missing context instances');
 
 
-    // Session gc
-    session_gc();
-    mtrace("Cleaned up stale user sessions");
+    // Session gc.
+    mtrace("Running session gc tasks...");
+    \core\session\manager::gc();
+    mtrace("...finished stale session cleanup");
 
 
     // Run the auth cron, if any before enrolments
@@ -414,8 +424,7 @@ function cron_run() {
 
     // If enabled, fetch information about available updates and eventually notify site admins
     if (empty($CFG->disableupdatenotifications)) {
-        require_once($CFG->libdir.'/pluginlib.php');
-        $updateschecker = available_update_checker::instance();
+        $updateschecker = \core\update\checker::instance();
         $updateschecker->cron();
     }
 

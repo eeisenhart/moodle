@@ -300,7 +300,7 @@ class sqlite3_pdo_moodle_database extends pdo_moodle_database {
         }
 
         if ($usecache) {
-            $result = $cache->set($table, $structure);
+            $cache->set($table, $structure);
         }
 
         return $structure;

@@ -52,7 +52,7 @@ require_once($CFG->libdir.'/dtllib.php');
 function tool_dbtransfer_export_xml_database($description, $mdb) {
     @set_time_limit(0);
 
-    session_get_instance()->write_close(); // Release session.
+    \core\session\manager::write_close(); // Release session.
 
     header('Content-Type: application/xhtml+xml; charset=utf-8');
     header('Content-Disposition: attachment; filename=database.xml');
@@ -79,7 +79,7 @@ function tool_dbtransfer_export_xml_database($description, $mdb) {
 function tool_dbtransfer_transfer_database(moodle_database $sourcedb, moodle_database $targetdb, progress_trace $feedback = null) {
     @set_time_limit(0);
 
-    session_get_instance()->write_close(); // Release session.
+    \core\session\manager::write_close(); // Release session.
 
     $var = new database_mover($sourcedb, $targetdb, true, $feedback);
     $var->export_database(null);
@@ -165,7 +165,7 @@ function tool_dbtransfer_get_drivers() {
 function tool_dbtransfer_create_maintenance_file() {
     global $CFG;
 
-    register_shutdown_function('tool_dbtransfer_maintenance_callback');
+    core_shutdown_manager::register_function('tool_dbtransfer_maintenance_callback');
 
     $options = new stdClass();
     $options->trusted = false;

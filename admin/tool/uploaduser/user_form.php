@@ -26,7 +26,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 require_once $CFG->libdir.'/formslib.php';
-
+require_once($CFG->dirroot . '/user/editlib.php');
 
 /**
  * Upload a file CVS file with user information.
@@ -237,19 +237,6 @@ class admin_uploaduser_form2 extends moodleform {
         $mform->addElement('select', 'autosubscribe', get_string('autosubscribe'), $choices);
         $mform->setDefault('autosubscribe', 1);
 
-        $editors = editors_get_enabled();
-        if (count($editors) > 1) {
-            $choices = array();
-            $choices['0'] = get_string('texteditor');
-            $choices['1'] = get_string('htmleditor');
-            $mform->addElement('select', 'htmleditor', get_string('textediting'), $choices);
-            $mform->setDefault('htmleditor', 1);
-        } else {
-            $mform->addElement('hidden', 'htmleditor');
-            $mform->setDefault('htmleditor', 1);
-            $mform->setType('htmleditor', PARAM_INT);
-        }
-
         $mform->addElement('text', 'city', get_string('city'), 'maxlength="120" size="25"');
         $mform->setType('city', PARAM_TEXT);
         if (empty($CFG->defaultcity)) {
@@ -388,24 +375,20 @@ class admin_uploaduser_form2 extends moodleform {
 
         // look for other required data
         if ($optype != UU_USER_UPDATE) {
-            if (!in_array('firstname', $columns)) {
-                $errors['uutype'] = get_string('missingfield', 'error', 'firstname');
-            }
-
-            if (!in_array('lastname', $columns)) {
-                if (isset($errors['uutype'])) {
-                    $errors['uutype'] = '';
-                } else {
-                    $errors['uutype'] = ' ';
+            $requiredusernames = useredit_get_required_name_fields();
+            $missing = array();
+            foreach ($requiredusernames as $requiredusername) {
+                if (!in_array($requiredusername, $columns)) {
+                    $missing[] = get_string('missingfield', 'error', $requiredusername);;
                 }
-                $errors['uutype'] .= get_string('missingfield', 'error', 'lastname');
             }
-
+            if ($missing) {
+                $errors['uutype'] = implode('<br />',  $missing);
+            }
             if (!in_array('email', $columns) and empty($data['email'])) {
                 $errors['email'] = get_string('requiredtemplate', 'tool_uploaduser');
             }
         }
-
         return $errors;
     }
 

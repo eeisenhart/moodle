@@ -237,6 +237,7 @@ $string['lti_launch_error_unsigned_help'] = '   <p>
     </p>';
 $string['lti_tool_request_added'] = 'Tool configuration request successfully submitted. You may need to contact an administrator to complete the tool configuration.';
 $string['lti_tool_request_existing'] = 'A tool configuration for the tool domain has already been submitted.';
+$string['ltiunknownserviceapicall'] = 'LTI unknown service API call.';
 $string['main_admin'] = 'General help';
 $string['main_admin_help'] = 'External tools allow Moodle users to seamlessly interact with learning resources hosted remotely. Through a special
 launch protocol, the remote tool will have access to some general information about the launching user. For example,
@@ -395,6 +396,7 @@ The only case in which this option should be selected is if the tool configurati
 For example, if all launches to the tool provider just take the user to a landing page instead of to a specific resource.';
 $string['size'] = 'Size parameters';
 $string['submission'] = 'Submission';
+$string['submissionsfor'] = 'Submissions for {$a}';
 $string['toggle_debug_data'] = 'Toggle Debug Data';
 $string['tool_config_not_found'] = 'Tool configuration not found for this URL.';
 $string['tool_settings'] = 'Tool Settings';
